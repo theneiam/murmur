@@ -1,0 +1,99 @@
+# XcodeGen spec — run `xcodegen generate` to produce Murmur.xcodeproj.
+# (brew install xcodegen). See README.md.
+name: Murmur
+
+options:
+  bundleIdPrefix: com.yevhen
+  deploymentTarget:
+    macOS: "14.0"
+  xcodeVersion: "16.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.10"
+    SWIFT_STRICT_CONCURRENCY: minimal
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ARCHS: arm64
+    # DEVELOPMENT_TEAM is intentionally NOT set here: with automatic signing
+    # Xcode uses the signed-in account's team. An empty team would fall back
+    # to ad-hoc "Sign to Run Locally", whose signature changes every build —
+    # and macOS ties the Accessibility grant to the signature, so you would
+    # have to re-grant it after every rebuild. Release builds pass it
+    # explicitly: scripts/release.sh → DEVELOPMENT_TEAM=$TEAM_ID.
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    ENABLE_USER_SCRIPT_SANDBOXING: NO
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+  configs:
+    Debug:
+      ONLY_ACTIVE_ARCH: YES
+    Release:
+      ONLY_ACTIVE_ARCH: NO
+
+packages:
+  ArgmaxOSS:
+    url: https://github.com/argmaxinc/argmax-oss-swift
+    from: "1.1.0"
+
+targets:
+  Murmur:
+    type: application
+    platform: macOS
+    sources:
+      - path: Murmur
+        excludes:
+          - "Info.plist"
+          - "Murmur.entitlements"
+    dependencies:
+      - package: ArgmaxOSS
+        product: WhisperKit
+    info:
+      path: Murmur/Info.plist
+      properties:
+        CFBundleName: Murmur
+        CFBundleDisplayName: Murmur
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundlePackageType: APPL
+        LSMinimumSystemVersion: $(MACOSX_DEPLOYMENT_TARGET)
+        LSApplicationCategoryType: public.app-category.productivity
+        # Menu bar only — no Dock icon, no app switcher entry.
+        LSUIElement: true
+        NSMicrophoneUsageDescription: Murmur records your voice only while you hold the push-to-talk key, and transcribes it entirely on this Mac.
+        NSHumanReadableCopyright: © 2026 Yevhen Nezhuta
+        NSSupportsAutomaticTermination: false
+        NSSupportsSuddenTermination: false
+    entitlements:
+      path: Murmur/Murmur.entitlements
+      properties:
+        # Not sandboxed: global event taps and AXUIElement writes into other
+        # apps are not available to sandboxed apps.
+        com.apple.security.app-sandbox: false
+        com.apple.security.device.audio-input: true
+        # Hardened-runtime exceptions are intentionally NOT needed: WhisperKit
+        # is pure Swift + CoreML.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yevhen.murmur
+        PRODUCT_NAME: Murmur
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          SWIFT_COMPILATION_MODE: wholemodule
+
+schemes:
+  Murmur:
+    build:
+      targets:
+        Murmur: all
+    run:
+      config: Debug
+    archive:
+      config: Release
