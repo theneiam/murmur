@@ -5,6 +5,8 @@ import AppKit
 @MainActor
 final class IndicatorModel: ObservableObject {
     enum State: Equatable {
+        /// Status-panel mode only: nothing happening.
+        case idle(StatusPanelIdle)
         case recording
         /// Spinner with a label: "Transcribing…", "Loading model…".
         case working(String)
@@ -34,6 +36,17 @@ struct IndicatorView: View {
     var body: some View {
         HStack(spacing: 10) {
             switch model.state {
+            case let .idle(idle):
+                Image(systemName: idle.isWarning ? "exclamationmark.triangle.fill" : "mic.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(idle.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                Text("Murmur")
+                    .font(.system(size: 13, weight: .semibold))
+                Text(idle.hint)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: 260)
             case .recording:
                 Circle()
                     .fill(Color.red)
@@ -64,9 +77,12 @@ struct IndicatorView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.white.opacity(0.12)))
-        .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
-        .padding(16) // room for the shadow inside the transparent panel
+        .overlay(Capsule().strokeBorder(.primary.opacity(0.08)))
+        // Two subtle layers instead of one big halo: a hairline contact
+        // shadow and a soft, low-opacity lift.
+        .shadow(color: .black.opacity(0.10), radius: 1, y: 1)
+        .shadow(color: .black.opacity(0.08), radius: 5, y: 2)
+        .padding(8) // room for the shadow inside the transparent panel
         .animation(.easeInOut(duration: 0.15), value: model.state)
     }
 
@@ -93,13 +109,62 @@ private struct Waveform: View {
 
 /// A non-activating floating panel that never steals focus from the app the
 /// user is dictating into.
+///
+/// Two modes. Transient (default): appears for a dictation, fades out after,
+/// click-through, always at the bottom centre of the active screen.
+/// Persistent (`isPersistent`, the "status panel" setting): stays on screen
+/// showing an idle state between dictations, can be dragged, and remembers
+/// where it was put via `anchor` / `onAnchorChange`.
 @MainActor
 final class IndicatorWindowController {
     let model = IndicatorModel()
-    private var panel: NSPanel?
+    private var panel: StatusPanelWindow?
     private var hideWork: DispatchWorkItem?
     private var timer: Timer?
     private var recordingStart: Date?
+    private var moveObserver: NSObjectProtocol?
+    /// Set while we move the panel ourselves so it is not mistaken for a drag.
+    private var isRepositioning = false
+
+    var isPersistent = false {
+        didSet {
+            guard isPersistent != oldValue else { return }
+            panel?.ignoresMouseEvents = !isPersistent
+            panel?.isMovableByWindowBackground = isPersistent
+            if isPersistent {
+                if case .idle = model.state { present() } else if !(panel?.isVisible ?? false) { showIdle() }
+            } else if case .idle = model.state {
+                orderOut()
+            }
+        }
+    }
+
+    /// Saved position (persistent mode). `nil` = default bottom centre.
+    var anchor: PanelAnchor?
+    /// Called after the user drags the panel, with the new anchor to persist.
+    var onAnchorChange: ((PanelAnchor) -> Void)?
+
+    private var idle = StatusPanelIdle(hint: "", isWarning: false)
+
+    /// Updates the idle content; re-renders immediately if idle is showing.
+    func setIdle(_ newIdle: StatusPanelIdle) {
+        guard newIdle != idle else { return }
+        idle = newIdle
+        if case .idle = model.state, isPersistent {
+            model.state = .idle(idle)
+            if let panel { position(panel) }
+        }
+    }
+
+    func showIdle() {
+        guard isPersistent else { return }
+        hideWork?.cancel()
+        timer?.invalidate()
+        timer = nil
+        recordingStart = nil
+        model.state = .idle(idle)
+        present()
+    }
 
     func showRecording() {
         hideWork?.cancel()
@@ -141,7 +206,17 @@ final class IndicatorWindowController {
     /// `present()` doesn't order the panel out from under a fresh recording.
     private var generation = 0
 
+    /// Ends the current transient state: fades out, or in persistent mode
+    /// returns to the idle status.
     func hide() {
+        if isPersistent {
+            showIdle()
+            return
+        }
+        orderOut()
+    }
+
+    private func orderOut() {
         timer?.invalidate()
         timer = nil
         recordingStart = nil
@@ -181,8 +256,8 @@ final class IndicatorWindowController {
         }
     }
 
-    private func makePanel() -> NSPanel {
-        let panel = NSPanel(
+    private func makePanel() -> StatusPanelWindow {
+        let panel = StatusPanelWindow(
             contentRect: NSRect(x: 0, y: 0, width: 260, height: 70),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
@@ -192,31 +267,67 @@ final class IndicatorWindowController {
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = !isPersistent
+        panel.isMovableByWindowBackground = isPersistent
         panel.hidesOnDeactivate = false
         panel.isFloatingPanel = true
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle]
         panel.isReleasedWhenClosed = false
 
-        let host = NSHostingView(rootView: IndicatorView(model: model))
+        let host = DraggableHostingView(rootView: IndicatorView(model: model))
         host.sizingOptions = [.intrinsicContentSize]
         panel.contentView = host
         self.panel = panel
+
+        moveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification, object: panel, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.panelDidMove() }
+        }
         return panel
     }
 
-    /// Bottom-centre of the screen that currently has keyboard focus.
+    private func panelDidMove() {
+        guard isPersistent, !isRepositioning, let panel else { return }
+        let frame = panel.frame
+        let moved = PanelAnchor(centerX: frame.midX, bottomY: frame.minY)
+        guard moved != anchor else { return }
+        anchor = moved
+        onAnchorChange?(moved)
+    }
+
+    /// Transient mode: bottom centre of the screen with keyboard focus.
+    /// Persistent mode: the saved anchor, validated against the connected
+    /// screens. Either way the pill is resized to fit its content first.
     private func position(_ panel: NSPanel) {
         let screen = NSScreen.main ?? NSScreen.screens.first
         guard let frame = screen?.visibleFrame else { return }
         panel.contentView?.layoutSubtreeIfNeeded()
         var size = panel.contentView?.fittingSize ?? panel.frame.size
         if size.width < 1 || size.height < 1 { size = NSSize(width: 260, height: 70) }
+
+        let target: PanelAnchor
+        if isPersistent, let anchor {
+            target = anchor.resolved(panelSize: size, screens: NSScreen.screens.map(\.visibleFrame), fallback: frame)
+        } else {
+            target = .default(for: frame)
+        }
+        isRepositioning = true
         panel.setContentSize(size)
-        let origin = NSPoint(
-            x: frame.midX - size.width / 2,
-            y: frame.minY + 60
-        )
-        panel.setFrameOrigin(origin)
+        panel.setFrameOrigin(target.origin(for: size))
+        isRepositioning = false
     }
+}
+
+/// Never becomes key or main, so dragging it never takes focus from the app
+/// the user is typing in.
+private final class StatusPanelWindow: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
+/// Lets a mouse-down anywhere on the SwiftUI content start a window drag
+/// (`isMovableByWindowBackground` only applies where this returns true).
+private final class DraggableHostingView<Content: View>: NSHostingView<Content> {
+    override var mouseDownCanMoveWindow: Bool { true }
 }

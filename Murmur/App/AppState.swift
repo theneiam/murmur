@@ -89,6 +89,21 @@ final class AppState: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
+        indicator.onAnchorChange = { [weak self] anchor in self?.settings.statusPanelAnchor = anchor }
+
+        // Status panel: idle content depends on permissions, model state,
+        // hotkey and phase. objectWillChange fires *before* the change, so
+        // coalesce briefly and read the new values afterwards.
+        Publishers.MergeMany(
+            models.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+            permissions.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+            settings.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+            $phase.map { _ in () }.eraseToAnyPublisher()
+        )
+        .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
+        .sink { [weak self] in self?.refreshStatusPanel() }
+        .store(in: &cancellables)
+
         // Whenever Accessibility becomes available (e.g. granted during
         // onboarding), bring the hotkey listener up.
         permissions.$accessibility
@@ -112,6 +127,22 @@ final class AppState: ObservableObject {
         // Keep re-checking permissions so a grant made in System Settings is
         // picked up without relaunching.
         permissions.startPolling(interval: 2.0)
+        refreshStatusPanel()
+    }
+
+    // MARK: Status panel
+
+    /// Pushes the current idle content and the on/off setting to the
+    /// indicator. Cheap and idempotent; called on every relevant change.
+    private func refreshStatusPanel() {
+        indicator.anchor = settings.statusPanelAnchor
+        indicator.setIdle(StatusPanelIdle.make(
+            isReady: isReadyToDictate,
+            hotkeyDisplay: settings.hotkey.displayString,
+            statusText: statusText
+        ))
+        indicator.isPersistent = settings.showStatusPanel
+        if settings.showStatusPanel, phase == .idle { indicator.showIdle() }
     }
 
     /// Readiness is tied to the *selected* model: switching to a model that is

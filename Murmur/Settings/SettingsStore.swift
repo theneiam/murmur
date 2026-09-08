@@ -18,11 +18,15 @@ final class SettingsStore: ObservableObject {
     @Published var hasCompletedOnboarding: Bool { didSet { save(hasCompletedOnboarding, key: .hasCompletedOnboarding) } }
     /// The one-time "Bluetooth microphone" hint has been shown.
     @Published var hasShownBluetoothHint: Bool { didSet { save(hasShownBluetoothHint, key: .hasShownBluetoothHint) } }
+    /// Keep the dictation indicator on screen permanently as a status panel.
+    @Published var showStatusPanel: Bool { didSet { save(showStatusPanel, key: .showStatusPanel) } }
+    /// Where the user last dragged the status panel; `nil` = default spot.
+    @Published var statusPanelAnchor: PanelAnchor? { didSet { save(statusPanelAnchor, key: .statusPanelAnchor) } }
 
     private enum Key: String {
         case hotkey, inputDeviceUID, model, language, insertionStrategy
         case postProcessing, maxRecordingSeconds, playSounds, hasCompletedOnboarding
-        case unloadAfterIdleMinutes, hasShownBluetoothHint
+        case unloadAfterIdleMinutes, hasShownBluetoothHint, showStatusPanel, statusPanelAnchor
         var storageKey: String { "murmur.\(rawValue)" }
     }
 
@@ -41,6 +45,8 @@ final class SettingsStore: ObservableObject {
         unloadAfterIdleMinutes = Self.load(Double.self, key: .unloadAfterIdleMinutes, from: defaults) ?? 30
         hasCompletedOnboarding = Self.load(Bool.self, key: .hasCompletedOnboarding, from: defaults) ?? false
         hasShownBluetoothHint = Self.load(Bool.self, key: .hasShownBluetoothHint, from: defaults) ?? false
+        showStatusPanel = Self.load(Bool.self, key: .showStatusPanel, from: defaults) ?? false
+        statusPanelAnchor = Self.load(PanelAnchor?.self, key: .statusPanelAnchor, from: defaults) ?? nil
     }
 
     // MARK: Persistence

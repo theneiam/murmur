@@ -43,7 +43,7 @@ Quit any running Murmur before launching a new build — two instances would bot
 | Speech | `Transcription/*` | `WhisperModel`/`TranscriptionLanguage` catalog, `TranscriptionEngine` protocol, `WhisperKitEngine` actor (one warm pipeline), `ModelManager` (download/load/status) |
 | Insertion | `Insertion/*` | `TextInserter` strategy switch → `AccessibilityInserter` (AX selected-text write + verification) or `PasteboardInserter` (⌘V + clipboard snapshot/restore) |
 | Text | `PostProcessing/TextPostProcessor.swift` | Capitalisation, filler stripping, replacement dictionary, trailing space |
-| UI | `UI/RecordingIndicator.swift`, `UI/MenuBarView.swift`, `UI/OnboardingView.swift`, `UI/Settings/SettingsView.swift` | Floating non-activating NSPanel; menu; first-run permissions + model download; 5-tab settings |
+| UI | `UI/RecordingIndicator.swift`, `UI/StatusPanel.swift`, `UI/MenuBarView.swift`, `UI/OnboardingView.swift`, `UI/Settings/SettingsView.swift` | Floating non-activating NSPanel (transient, or persistent "status panel" mode: idle state, draggable, `PanelAnchor` saved in settings); menu; first-run permissions + model download; 5-tab settings |
 | Support | `Permissions/`, `Settings/SettingsStore.swift`, `Support/LaunchAtLogin.swift`, `Support/AboutPanel.swift`, `Support/SupportLinks.swift`, `Support/DiagnosticsReport.swift` | Mic/AX permission polling, persisted settings, `SMAppService`, About panel with credits, outbound URLs, diagnostics file (OSLogStore of the current process, last hour) |
 
 ## Product constraints (don't drift)
