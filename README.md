@@ -168,7 +168,7 @@ Signing identity: automatic signing with `DEVELOPMENT_TEAM` picks the *Developer
 | First dictation takes many seconds | CoreML specialization on first load. Subsequent runs are fast; it is cached across launches. |
 | "Model error" after a macOS update | Delete the model in Settings → Model and download again (CoreML cache invalidated). |
 | Modifier-only hotkey triggers when using shortcuts | Expected — recording is cancelled as soon as you press another key, so nothing is transcribed. Pick a less-used key (right ⌥, fn, F13) if it's distracting. |
-| "No audio arrived from the microphone" although Microphone is ticked | The app was re-signed (new build identity) and the microphone grant no longer matches it; the permission check still passes but Core Audio refuses to start IO. Run `tccutil reset Microphone com.yevhen.murmur`, relaunch, and accept the prompt. |
+| "No audio arrived from …" although Microphone is ticked | Core Audio started the engine but never delivered audio from the named device. With Bluetooth headsets (AirPods) this happens when the headset-profile switch fails: pick the built-in microphone in *Settings → Audio*. If it happens with the built-in mic after a rebuild, the microphone grant no longer matches the app's signature: `tccutil reset Microphone com.yevhen.murmur`, relaunch, accept the prompt. |
 | Hotkey does nothing while Terminal / iTerm / a password prompt is in front | *Secure Keyboard Entry* is on. macOS hides keyboard events from every event tap while it is active. Turn it off (Terminal → Secure Keyboard Entry) or dictate into another app. |
 
 Logs: `log stream --predicate 'subsystem == "com.yevhen.murmur"' --level debug`.

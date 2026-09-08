@@ -23,22 +23,32 @@ struct Recording {
     let samples: [Float]
     /// How long the engine was running, regardless of how much audio arrived.
     let wallClockDuration: TimeInterval
+    /// Human-readable name of the input device that was used, when known.
+    let deviceName: String?
 
-    init(samples: [Float], wallClockDuration: TimeInterval = 0) {
+    init(samples: [Float], wallClockDuration: TimeInterval = 0, deviceName: String? = nil) {
         self.samples = samples
         self.wallClockDuration = wallClockDuration
+        self.deviceName = deviceName
     }
 
     var duration: TimeInterval { Double(samples.count) / AudioRecorder.sampleRate }
 
-    /// The engine ran long enough for a real utterance but delivered nothing.
-    /// On macOS this is what a microphone grant that no longer matches the
-    /// app's code signature looks like: `AVCaptureDevice.authorizationStatus`
-    /// still says authorized, the engine starts, and coreaudiod refuses IO
-    /// (`HALC_ProxyIOContext … StartIO … error 35`). Must not be mistaken
-    /// for a too-short tap and dismissed silently.
+    /// The engine ran long enough for a real utterance but delivered nothing:
+    /// the engine started but coreaudiod never delivered a buffer
+    /// (`HALC_ProxyIOContext … StartIO … error 35`). Seen with Bluetooth
+    /// inputs (AirPods) whose headset-profile handshake fails, and with a
+    /// microphone grant that no longer matches the app's code signature.
+    /// Must not be mistaken for a too-short tap and dismissed silently.
     func isSilentCaptureFailure(minimumUtterance: TimeInterval) -> Bool {
         samples.isEmpty && wallClockDuration >= minimumUtterance
+    }
+
+    /// User-facing explanation for `isSilentCaptureFailure`, naming the
+    /// device so the fix (pick another microphone) is obvious.
+    var silentCaptureFailureMessage: String {
+        let device = deviceName.map { "“\($0)”" } ?? "the microphone"
+        return "No audio arrived from \(device). Try another microphone in Settings → Audio, or check Privacy & Security → Microphone."
     }
 }
 
@@ -66,6 +76,7 @@ final class AudioRecorder {
     private var maxSamples = Int.max
     private var autoStopFired = false
     private var startedAt: Date?
+    private var deviceName: String?
 
     private(set) var isRecording = false
 
@@ -86,6 +97,9 @@ final class AudioRecorder {
 
         if let uid = inputDeviceUID, let deviceID = AudioDevices.deviceID(forUID: uid) {
             setInputDevice(deviceID, on: input)
+            deviceName = AudioDevices.name(of: deviceID)
+        } else {
+            deviceName = AudioDevices.defaultInputDeviceID().flatMap(AudioDevices.name(of:))
         }
 
         let inputFormat = input.outputFormat(forBus: 0)
@@ -124,7 +138,7 @@ final class AudioRecorder {
         }
         isRecording = true
         startedAt = Date()
-        log.debug("Recording started (\(inputFormat.sampleRate, privacy: .public) Hz, \(inputFormat.channelCount, privacy: .public) ch)")
+        log.debug("Recording started on \(self.deviceName ?? "unknown device", privacy: .public) (\(inputFormat.sampleRate, privacy: .public) Hz, \(inputFormat.channelCount, privacy: .public) ch)")
     }
 
     @discardableResult
@@ -145,12 +159,14 @@ final class AudioRecorder {
         samples.removeAll(keepingCapacity: true)
         lock.unlock()
 
+        let device = deviceName
+        deviceName = nil
         if captured.isEmpty {
-            log.error("Recording stopped after \(elapsed, privacy: .public) s with no audio; the HAL never delivered buffers")
+            log.error("Recording stopped after \(elapsed, privacy: .public) s with no audio from \(device ?? "unknown device", privacy: .public); the HAL never delivered buffers")
         } else {
             log.debug("Recording stopped: \(captured.count, privacy: .public) samples")
         }
-        return Recording(samples: captured, wallClockDuration: elapsed)
+        return Recording(samples: captured, wallClockDuration: elapsed, deviceName: device)
     }
 
     // MARK: Processing

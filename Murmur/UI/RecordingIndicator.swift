@@ -54,8 +54,10 @@ struct IndicatorView: View {
                     .foregroundStyle(.orange)
                 Text(text)
                     .font(.system(size: 13, weight: .medium))
-                    .lineLimit(2)
-                    .frame(maxWidth: 260)
+                    .lineLimit(3)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 320, alignment: .leading)
             }
         }
         .padding(.horizontal, 16)

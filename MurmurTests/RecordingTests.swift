@@ -22,4 +22,11 @@ final class RecordingTests: XCTestCase {
     func testAnyAudioIsNotASilentFailure() {
         XCTAssertFalse(Recording(samples: [0.1, 0.2], wallClockDuration: 2.0).isSilentCaptureFailure(minimumUtterance: minimum))
     }
+
+    func testFailureMessageNamesTheDevice() {
+        let named = Recording(samples: [], wallClockDuration: 2, deviceName: "AirPods Pro")
+        XCTAssertTrue(named.silentCaptureFailureMessage.contains("“AirPods Pro”"))
+        let unnamed = Recording(samples: [], wallClockDuration: 2)
+        XCTAssertTrue(unnamed.silentCaptureFailureMessage.contains("the microphone"))
+    }
 }

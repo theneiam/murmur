@@ -219,9 +219,9 @@ final class AppState: ObservableObject {
         guard recording.duration >= minimumUtterance else {
             phase = .idle
             if recording.isSilentCaptureFailure(minimumUtterance: minimumUtterance) {
-                let message = "No audio arrived from the microphone. Check Privacy & Security → Microphone; a rebuilt app must be granted again."
+                let message = recording.silentCaptureFailureMessage
                 lastError = message
-                indicator.showMessage(message, for: 4)
+                indicator.showMessage(message, for: 5)
             } else {
                 indicator.hide()
             }
