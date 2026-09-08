@@ -42,11 +42,13 @@ struct IndicatorView: View {
                     .foregroundStyle(idle.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
                 Text("Murmur")
                     .font(.system(size: 13, weight: .semibold))
-                Text(idle.hint)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: 260)
+                if !idle.hint.isEmpty {
+                    Text(idle.hint)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .frame(maxWidth: 260)
+                }
             case .recording:
                 Circle()
                     .fill(Color.red)

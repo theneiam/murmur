@@ -136,11 +136,7 @@ final class AppState: ObservableObject {
     /// indicator. Cheap and idempotent; called on every relevant change.
     private func refreshStatusPanel() {
         indicator.anchor = settings.statusPanelAnchor
-        indicator.setIdle(StatusPanelIdle.make(
-            isReady: isReadyToDictate,
-            hotkeyDisplay: settings.hotkey.displayString,
-            statusText: statusText
-        ))
+        indicator.setIdle(StatusPanelIdle.make(isReady: isReadyToDictate, statusText: statusText))
         indicator.isPersistent = settings.showStatusPanel
         if settings.showStatusPanel, phase == .idle { indicator.showIdle() }
     }

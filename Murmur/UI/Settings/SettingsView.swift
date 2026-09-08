@@ -63,7 +63,7 @@ struct GeneralSettingsView: View {
                 }
                 Toggle("Play start/stop sounds", isOn: $settings.playSounds)
                 Toggle("Show floating status panel", isOn: $settings.showStatusPanel)
-                Text("Keeps the dictation indicator on screen all the time, showing that Murmur is running and which key to hold. Drag it anywhere; it never takes focus from the app you are typing in.")
+                Text("Keeps the dictation indicator on screen all the time, showing that Murmur is running. Drag it anywhere; it never takes focus from the app you are typing in.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

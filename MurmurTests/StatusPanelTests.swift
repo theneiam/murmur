@@ -44,14 +44,14 @@ final class StatusPanelTests: XCTestCase {
 
     // MARK: Idle hint
 
-    func testIdleHintShowsTheHotkeyWhenReady() {
-        let idle = StatusPanelIdle.make(isReady: true, hotkeyDisplay: "Right ⌥", statusText: "Hold Right ⌥ to dictate")
-        XCTAssertEqual(idle.hint, "Hold Right ⌥")
+    func testIdleShowsNoHintWhenReady() {
+        let idle = StatusPanelIdle.make(isReady: true, statusText: "Hold Right ⌥ to dictate")
+        XCTAssertEqual(idle.hint, "")
         XCTAssertFalse(idle.isWarning)
     }
 
     func testIdleHintShowsTheReasonWhenNotReady() {
-        let idle = StatusPanelIdle.make(isReady: false, hotkeyDisplay: "Right ⌥", statusText: "Accessibility permission needed")
+        let idle = StatusPanelIdle.make(isReady: false, statusText: "Accessibility permission needed")
         XCTAssertEqual(idle.hint, "Accessibility permission needed")
         XCTAssertTrue(idle.isWarning)
     }

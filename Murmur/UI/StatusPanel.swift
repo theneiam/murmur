@@ -33,16 +33,17 @@ struct PanelAnchor: Codable, Equatable {
     }
 }
 
-/// What the panel shows while nothing is happening.
+/// What the panel shows while nothing is happening: just the glyph and the
+/// name when ready, or the reason when Murmur cannot dictate right now.
 struct StatusPanelIdle: Equatable {
+    /// Empty when ready; otherwise the problem (permission missing, model
+    /// not downloaded…), shown with a warning glyph.
     var hint: String
-    /// `true` when the hint is a problem (permission missing, model not
-    /// downloaded) rather than the usual "hold the key" prompt.
     var isWarning: Bool
 
-    static func make(isReady: Bool, hotkeyDisplay: String, statusText: String) -> StatusPanelIdle {
+    static func make(isReady: Bool, statusText: String) -> StatusPanelIdle {
         isReady
-            ? StatusPanelIdle(hint: "Hold \(hotkeyDisplay)", isWarning: false)
+            ? StatusPanelIdle(hint: "", isWarning: false)
             : StatusPanelIdle(hint: statusText, isWarning: true)
     }
 }
