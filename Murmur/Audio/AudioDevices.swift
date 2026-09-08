@@ -50,6 +50,10 @@ enum AudioDevices {
         inputDevices().first { $0.uid == uid }?.id
     }
 
+    static func name(of id: AudioDeviceID) -> String? {
+        stringProperty(of: id, selector: kAudioObjectPropertyName)
+    }
+
     // MARK: Helpers
 
     private static func inputChannelCount(of id: AudioDeviceID) -> Int {

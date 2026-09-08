@@ -12,11 +12,13 @@
 #   SKIP_NOTARIZE=1    Sign only (useful for local testing)
 #
 # Usage: TEAM_ID=XXXXXXXXXX NOTARY_PROFILE=murmur-notary scripts/release.sh
+# Output: build/release/Murmur-<version>.dmg
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 ROOT="$(pwd)"
-BUILD="$ROOT/build"
+# Kept apart from build/DerivedData (debug builds) so a release never wipes it.
+BUILD="$ROOT/build/release"
 ARCHIVE="$BUILD/Murmur.xcarchive"
 EXPORT="$BUILD/export"
 APP="$EXPORT/Murmur.app"

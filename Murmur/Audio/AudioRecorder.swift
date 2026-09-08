@@ -21,7 +21,25 @@ enum AudioRecorderError: LocalizedError {
 struct Recording {
     /// 16 kHz, mono, Float32 PCM in [-1, 1] — exactly what Whisper expects.
     let samples: [Float]
+    /// How long the engine was running, regardless of how much audio arrived.
+    let wallClockDuration: TimeInterval
+
+    init(samples: [Float], wallClockDuration: TimeInterval = 0) {
+        self.samples = samples
+        self.wallClockDuration = wallClockDuration
+    }
+
     var duration: TimeInterval { Double(samples.count) / AudioRecorder.sampleRate }
+
+    /// The engine ran long enough for a real utterance but delivered nothing.
+    /// On macOS this is what a microphone grant that no longer matches the
+    /// app's code signature looks like: `AVCaptureDevice.authorizationStatus`
+    /// still says authorized, the engine starts, and coreaudiod refuses IO
+    /// (`HALC_ProxyIOContext … StartIO … error 35`). Must not be mistaken
+    /// for a too-short tap and dismissed silently.
+    func isSilentCaptureFailure(minimumUtterance: TimeInterval) -> Bool {
+        samples.isEmpty && wallClockDuration >= minimumUtterance
+    }
 }
 
 /// Captures microphone audio with `AVAudioEngine`, resamples it to 16 kHz
@@ -47,6 +65,7 @@ final class AudioRecorder {
     private var samples: [Float] = []
     private var maxSamples = Int.max
     private var autoStopFired = false
+    private var startedAt: Date?
 
     private(set) var isRecording = false
 
@@ -104,6 +123,7 @@ final class AudioRecorder {
             throw error
         }
         isRecording = true
+        startedAt = Date()
         log.debug("Recording started (\(inputFormat.sampleRate, privacy: .public) Hz, \(inputFormat.channelCount, privacy: .public) ch)")
     }
 
@@ -117,14 +137,20 @@ final class AudioRecorder {
         self.engine = nil
         converter = nil
         isRecording = false
+        let elapsed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+        startedAt = nil
 
         lock.lock()
         let captured = samples
         samples.removeAll(keepingCapacity: true)
         lock.unlock()
 
-        log.debug("Recording stopped: \(captured.count, privacy: .public) samples")
-        return Recording(samples: captured)
+        if captured.isEmpty {
+            log.error("Recording stopped after \(elapsed, privacy: .public) s with no audio; the HAL never delivered buffers")
+        } else {
+            log.debug("Recording stopped: \(captured.count, privacy: .public) samples")
+        }
+        return Recording(samples: captured, wallClockDuration: elapsed)
     }
 
     // MARK: Processing
@@ -196,6 +222,19 @@ final class AudioRecorder {
         AudioUnitInitialize(unit)
         if status != noErr {
             log.error("Failed to select input device \(deviceID, privacy: .public): \(status, privacy: .public); using the system default")
+            return
+        }
+        // Read the property back so the log says definitively whether the
+        // override took effect (the only way to verify without a UI).
+        var actual: AudioDeviceID = 0
+        var size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let readStatus = AudioUnitGetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &actual, &size)
+        if readStatus != noErr {
+            log.error("Could not read back the input device (\(readStatus, privacy: .public))")
+        } else if actual != deviceID {
+            log.error("Input device override did not stick: requested \(deviceID, privacy: .public), unit reports \(actual, privacy: .public)")
+        } else {
+            log.info("Input device set to \(deviceID, privacy: .public) (\(AudioDevices.name(of: deviceID) ?? "unnamed", privacy: .public))")
         }
     }
 }

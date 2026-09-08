@@ -145,13 +145,12 @@ final class AppState: ObservableObject {
 
     // MARK: Push-to-talk state machine
 
-    /// Called from inside the CGEvent tap callback. Anything slow here stalls
-    /// every keystroke on the system and can get the tap disabled, so only
-    /// flip state and hop off the callback before starting the audio engine.
+    /// Delivered on the main queue by `HotkeyManager`, already off the event
+    /// tap thread, so it is safe to bring the audio engine up right here.
     private func hotkeyPressed() {
         guard phase == .idle else { return }
         phase = .starting
-        DispatchQueue.main.async { [weak self] in self?.beginRecording() }
+        beginRecording()
     }
 
     private func beginRecording() {
@@ -219,7 +218,13 @@ final class AppState: ObservableObject {
 
         guard recording.duration >= minimumUtterance else {
             phase = .idle
-            indicator.hide()
+            if recording.isSilentCaptureFailure(minimumUtterance: minimumUtterance) {
+                let message = "No audio arrived from the microphone. Check Privacy & Security → Microphone; a rebuilt app must be granted again."
+                lastError = message
+                indicator.showMessage(message, for: 4)
+            } else {
+                indicator.hide()
+            }
             return
         }
 

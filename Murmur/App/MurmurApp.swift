@@ -57,12 +57,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // belt-and-braces guard for debug builds launched from Xcode.
         NSApp.setActivationPolicy(.accessory)
 
+        // Unit tests are hosted in this app. Do nothing that touches the
+        // system (event tap, permission prompts, model load, windows) so a
+        // test run can coexist with a real Murmur instance.
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
+
         let state = AppState.shared
         state.start()
 
+        // Onboarding's Done button requires a downloaded model, so a missing
+        // model after onboarding means the user deleted it deliberately; the
+        // menu status tells them, no need to re-run onboarding.
         let needsOnboarding = !state.settings.hasCompletedOnboarding
             || !state.permissions.allGranted
-            || !state.models.isDownloaded(state.settings.model)
         if needsOnboarding {
             showOnboarding()
         }

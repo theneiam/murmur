@@ -26,6 +26,10 @@ enum PasteboardInserter {
 
         let ourChangeCount = pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
+        // Tell clipboard managers (Maccy, Paste, Raycast, Alfred…) not to
+        // record this entry: it is restored a moment later and the user never
+        // asked for it in their history. De-facto standard from nspasteboard.org.
+        pasteboard.setString("", forType: .transient)
 
         postCommandV()
 
@@ -98,4 +102,9 @@ enum PasteboardInserter {
             }
         }
     }
+}
+
+extension NSPasteboard.PasteboardType {
+    /// http://nspasteboard.org — clipboard managers skip items carrying it.
+    static let transient = NSPasteboard.PasteboardType("org.nspasteboard.TransientType")
 }

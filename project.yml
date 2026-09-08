@@ -16,13 +16,16 @@ settings:
     SWIFT_STRICT_CONCURRENCY: minimal
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     ARCHS: arm64
-    # DEVELOPMENT_TEAM is intentionally NOT set here: with automatic signing
-    # Xcode uses the signed-in account's team. An empty team would fall back
-    # to ad-hoc "Sign to Run Locally", whose signature changes every build —
-    # and macOS ties the Accessibility grant to the signature, so you would
-    # have to re-grant it after every rebuild. Release builds pass it
-    # explicitly: scripts/release.sh → DEVELOPMENT_TEAM=$TEAM_ID.
+    # The team MUST live here, not only in Xcode's Signing tab: `xcodegen
+    # generate` rewrites the project and would drop a team set in the UI.
+    # Without a team, automatic signing falls back to ad-hoc "Sign to Run
+    # Locally", whose designated requirement is the binary's cdhash — it
+    # changes every build, and macOS ties the Accessibility grant to it, so
+    # the toggle stays on while AXIsProcessTrusted() returns false. With the
+    # team set, the requirement is the Apple Development certificate and the
+    # grant survives rebuilds. scripts/release.sh overrides it with $TEAM_ID.
     CODE_SIGN_STYLE: Automatic
+    DEVELOPMENT_TEAM: 55GBH53Y3N
     ENABLE_HARDENED_RUNTIME: YES
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     MARKETING_VERSION: "0.1.0"
@@ -88,12 +91,33 @@ targets:
           SWIFT_OPTIMIZATION_LEVEL: "-O"
           SWIFT_COMPILATION_MODE: wholemodule
 
+  MurmurTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: MurmurTests
+    dependencies:
+      # Hosted in the app so tests can `@testable import Murmur`. The
+      # AppDelegate skips start-up work (event tap, model load, onboarding)
+      # when it detects XCTest, so running tests never interferes with a
+      # Murmur instance already running.
+      - target: Murmur
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.yevhen.murmur.tests
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   Murmur:
     build:
       targets:
         Murmur: all
+        MurmurTests: [test]
     run:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - MurmurTests
     archive:
       config: Release

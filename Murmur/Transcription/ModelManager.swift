@@ -61,10 +61,30 @@ final class ModelManager: ObservableObject {
     }
 
     func isDownloaded(_ model: WhisperModel) -> Bool {
-        let folder = folder(for: model)
-        guard let contents = try? FileManager.default.contentsOfDirectory(atPath: folder.path) else { return false }
-        // A complete WhisperKit bundle always contains the compiled audio encoder.
-        return contents.contains { $0.hasPrefix("AudioEncoder") && $0.hasSuffix(".mlmodelc") }
+        Self.isCompleteBundle(at: folder(for: model))
+    }
+
+    /// The compiled CoreML models every WhisperKit bundle ships with. The Hub
+    /// client downloads them one file at a time, so an interrupted download
+    /// can leave the encoder in place with no decoder yet.
+    static let requiredModelDirectories = ["MelSpectrogram.mlmodelc", "AudioEncoder.mlmodelc", "TextDecoder.mlmodelc"]
+    static let requiredFiles = ["config.json"]
+
+    /// `true` when `folder` holds a loadable bundle: each compiled model
+    /// directory exists and contains its `coremldata.bin`, and the config is
+    /// present. Pure so it can be tested against a temporary directory.
+    nonisolated static func isCompleteBundle(at folder: URL) -> Bool {
+        let fm = FileManager.default
+        for name in requiredModelDirectories {
+            let dir = folder.appendingPathComponent(name, isDirectory: true)
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: dir.path, isDirectory: &isDir), isDir.boolValue else { return false }
+            guard fm.fileExists(atPath: dir.appendingPathComponent("coremldata.bin").path) else { return false }
+        }
+        for name in requiredFiles {
+            guard fm.fileExists(atPath: folder.appendingPathComponent(name).path) else { return false }
+        }
+        return true
     }
 
     func status(of model: WhisperModel) -> ModelStatus {

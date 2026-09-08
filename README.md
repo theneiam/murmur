@@ -68,7 +68,7 @@ xcodegen generate                # creates Murmur.xcodeproj (+ Info.plist, entit
 open Murmur.xcodeproj            # or: xcodebuild -scheme Murmur -configuration Debug build
 ```
 
-In Xcode, set your team under *Signing & Capabilities* (or put it in `project.yml` → `DEVELOPMENT_TEAM`) and run. The first build resolves the `argmax-oss-swift` package (this is the renamed WhisperKit repo; the `WhisperKit` library product is what Murmur links).
+`project.yml` sets `DEVELOPMENT_TEAM`; change it to your own team ID there (not in Xcode's Signing tab, which `xcodegen generate` overwrites) and run. The first build resolves the `argmax-oss-swift` package (this is the renamed WhisperKit repo; the `WhisperKit` library product is what Murmur links).
 
 ### First run
 
@@ -78,7 +78,7 @@ Murmur opens an onboarding window that walks through the three things it needs:
 2. **Accessibility** — required for the global hotkey (an active CGEvent tap) and for AXUIElement text insertion. The window offers the system prompt plus a direct link to *Privacy & Security → Accessibility*. macOS does not notify apps when this changes, so Murmur polls every second while onboarding is open (and every 2 s in the background) and brings the hotkey listener up the moment it's granted.
 3. **Model download** — the only time Murmur uses the network. Pick a model and press Download; progress is shown inline.
 
-> **Debug builds and Accessibility.** macOS ties the Accessibility grant to the code signature. Every time Xcode re-signs a debug build with a different identity you may have to remove Murmur from the Accessibility list and add it again. Using a stable Apple Development certificate (automatic signing with your team set) avoids most of this.
+> **Debug builds and Accessibility.** macOS ties the Accessibility grant to the code signature. With `DEVELOPMENT_TEAM` set, debug builds are signed with your stable Apple Development certificate and the grant survives rebuilds. If the team is missing, Xcode signs ad-hoc and every build is a new identity: the Accessibility toggle stays on but the app is not trusted, and you must remove Murmur from the list and add it again. `codesign -d -r- Murmur.app` should name the certificate, not a `cdhash`.
 
 > **fn / 🌐 as the hotkey.** Set *System Settings → Keyboard → "Press 🌐 key to" → Do Nothing*, otherwise a short press opens the emoji picker.
 
@@ -86,7 +86,7 @@ Murmur opens an onboarding window that walks through the three things it needs:
 
 ## How it works
 
-**Hotkey (`HotkeyManager`).** One session-level `CGEvent` tap listens for `keyDown`, `keyUp` and `flagsChanged`. Key-based hotkeys are swallowed so they don't also type into the focused app; modifier-only hotkeys are matched on `flagsChanged` using both the generic modifier bits and the device-specific left/right bits, so "right ⌥" and "left ⌥" are different keys. If you type another key while a modifier-only hotkey is held (i.e. you are using a shortcut), the recording is cancelled silently. The same tap is used by the Settings hotkey recorder so what you record is exactly what gets matched later. Murmur's own synthesized ⌘V is tagged and ignored by the tap.
+**Hotkey (`HotkeyManager`).** One session-level `CGEvent` tap, running on a dedicated thread so a busy main thread never delays keystrokes, listens for `keyDown`, `keyUp` and `flagsChanged`. Key-based hotkeys are swallowed so they don't also type into the focused app; modifier-only hotkeys are matched on `flagsChanged` using both the generic modifier bits and the device-specific left/right bits, so "right ⌥" and "left ⌥" are different keys. If you type another key while a modifier-only hotkey is held (i.e. you are using a shortcut), the recording is cancelled silently. The same tap is used by the Settings hotkey recorder so what you record is exactly what gets matched later. Murmur's own synthesized ⌘V is tagged and ignored by the tap.
 
 **Audio (`AudioRecorder`).** A fresh `AVAudioEngine` per utterance (so device changes take effect immediately), tapped at the hardware format and converted on the fly to 16 kHz mono Float32 with `AVAudioConverter`. RMS level per buffer drives the indicator. When the sample count hits the cap, the recorder stops itself and the app transcribes as if the key had been released.
 
@@ -149,7 +149,7 @@ Release build:
 
 ```bash
 TEAM_ID=XXXXXXXXXX NOTARY_PROFILE=murmur-notary scripts/release.sh
-# → build/Murmur-<version>.dmg, notarized and stapled (app and DMG)
+# → build/release/Murmur-<version>.dmg, notarized and stapled (app and DMG)
 ```
 
 The script: regenerates the project, archives Release/arm64, exports with the Developer ID method (`scripts/ExportOptions.plist`), verifies the signature, notarizes and staples the .app, wraps it in a compressed DMG with an `/Applications` symlink, then notarizes and staples the DMG and runs a Gatekeeper assessment. `SKIP_NOTARIZE=1` produces a signed-but-unnotarized build for local testing; `VERSION=0.2.0` overrides the marketing version.
@@ -168,8 +168,18 @@ Signing identity: automatic signing with `DEVELOPMENT_TEAM` picks the *Developer
 | First dictation takes many seconds | CoreML specialization on first load. Subsequent runs are fast; it is cached across launches. |
 | "Model error" after a macOS update | Delete the model in Settings → Model and download again (CoreML cache invalidated). |
 | Modifier-only hotkey triggers when using shortcuts | Expected — recording is cancelled as soon as you press another key, so nothing is transcribed. Pick a less-used key (right ⌥, fn, F13) if it's distracting. |
+| "No audio arrived from the microphone" although Microphone is ticked | The app was re-signed (new build identity) and the microphone grant no longer matches it; the permission check still passes but Core Audio refuses to start IO. Run `tccutil reset Microphone com.yevhen.murmur`, relaunch, and accept the prompt. |
+| Hotkey does nothing while Terminal / iTerm / a password prompt is in front | *Secure Keyboard Entry* is on. macOS hides keyboard events from every event tap while it is active. Turn it off (Terminal → Secure Keyboard Entry) or dictate into another app. |
 
 Logs: `log stream --predicate 'subsystem == "com.yevhen.murmur"' --level debug`.
+
+## Tests
+
+```bash
+xcodebuild test -project Murmur.xcodeproj -scheme Murmur -destination 'platform=macOS'
+```
+
+`MurmurTests` covers the pure logic: text post-processing, hotkey matching and display names, tolerant settings decoding, model-bundle completeness and permission-poll bookkeeping. The tests are hosted in the app, whose delegate skips all start-up work under XCTest, so they can run while a real Murmur is in the menu bar.
 
 ---
 

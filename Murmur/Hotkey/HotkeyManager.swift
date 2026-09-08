@@ -18,219 +18,116 @@ enum HotkeyError: LocalizedError {
     }
 }
 
-/// Listens for the push-to-talk hotkey system-wide using a CGEvent tap.
-///
-/// The tap is *active* (`.defaultTap`) so that a key-based hotkey can be
-/// swallowed and does not also type into the focused app. Modifier-only
-/// hotkeys are never swallowed. The same tap is reused to record a new
-/// hotkey from the settings window (`beginCapture`).
-@MainActor
-final class HotkeyManager {
-    /// Marker placed in `eventSourceUserData` on events Murmur posts itself
-    /// (the ⌘V used by the pasteboard inserter) so the tap ignores them.
-    nonisolated static let syntheticEventTag: Int64 = 0x4D75726D // "Murm"
-
-    var hotkey: Hotkey {
-        didSet { if hotkey != oldValue { resetState() } }
+/// The push-to-talk state machine driven by raw tap events. A value type
+/// with no side effects: `handle` returns whether to swallow the event and
+/// which high-level events to deliver, so it can be unit-tested and so the
+/// tap callback only ever does a few integer comparisons.
+struct TapState: Equatable {
+    enum Event: Equatable {
+        case press
+        case release
+        /// Modifier-only hotkeys: another key was typed while the modifier was
+        /// held (the user is using a shortcut, not dictating).
+        case cancel
+        case captured(Hotkey?)
     }
 
-    var onPress: (() -> Void)?
-    var onRelease: (() -> Void)?
-    /// Modifier-only hotkeys: fired when another key is typed while the
-    /// modifier is held (the user is using a shortcut, not dictating).
-    var onCancel: (() -> Void)?
+    struct Capture: Equatable {
+        var accumulatedFlags: UInt64 = 0
+        var lastModifierKeyCode: UInt16 = 0
+        var sawModifier = false
+    }
 
-    private(set) var isRunning = false
-    private var tap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var isDown = false
-    private var cancelled = false
-
-    private var capture: CaptureSession?
-    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "hotkey")
+    var hotkey: Hotkey
+    var isDown = false
+    var cancelled = false
+    var capture: Capture?
 
     init(hotkey: Hotkey) {
         self.hotkey = hotkey
     }
 
-    // MARK: Lifecycle
-
-    func start() throws {
-        guard !isRunning else { return }
-        guard AXIsProcessTrusted() else { throw HotkeyError.accessibilityNotGranted }
-
-        let mask: CGEventMask =
-            (1 << CGEventType.keyDown.rawValue)
-            | (1 << CGEventType.keyUp.rawValue)
-            | (1 << CGEventType.flagsChanged.rawValue)
-
-        guard let tap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: mask,
-            callback: HotkeyManager.tapCallback,
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
-        ) else {
-            throw HotkeyError.tapCreationFailed
-        }
-
-        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: tap, enable: true)
-
-        self.tap = tap
-        self.runLoopSource = source
-        isRunning = true
-        log.info("Event tap installed")
-    }
-
-    func stop() {
-        guard isRunning else { return }
-        if let tap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFMachPortInvalidate(tap)
-        }
-        if let runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
-            CFRunLoopSourceInvalidate(runLoopSource)
-        }
-        tap = nil
-        runLoopSource = nil
-        isRunning = false
-        resetState()
-    }
+    var isCapturing: Bool { capture != nil }
 
     /// Drops any in-progress press. A press interrupted this way (hotkey
     /// changed, listener stopped) is cancelled, never treated as a release.
-    private func resetState() {
-        if isDown, !cancelled { onCancel?() }
+    mutating func reset() -> [Event] {
+        let events: [Event] = isDown && !cancelled ? [.cancel] : []
         isDown = false
         cancelled = false
+        return events
     }
 
-    // MARK: Hotkey capture (settings UI)
-
-    private struct CaptureSession {
-        var accumulatedFlags: UInt64 = 0
-        var lastModifierKeyCode: UInt16 = 0
-        var sawModifier = false
-        let completion: (Hotkey?) -> Void
+    mutating func setHotkey(_ new: Hotkey) -> [Event] {
+        guard new != hotkey else { return [] }
+        hotkey = new
+        return reset()
     }
 
-    /// Records the next key or modifier chord the user presses. Push-to-talk
-    /// is suspended while capturing. Escape cancels (`completion(nil)`).
-    func beginCapture(_ completion: @escaping (Hotkey?) -> Void) {
-        resetState()
-        capture = CaptureSession(completion: completion)
+    mutating func beginCapture() -> [Event] {
+        let events = reset()
+        capture = Capture()
+        return events
     }
 
-    func cancelCapture() {
-        let session = capture
-        capture = nil
-        session?.completion(nil)
-    }
-
-    var isCapturing: Bool { capture != nil }
-
-    // MARK: Event handling
-
-    private static let tapCallback: CGEventTapCallBack = { _, type, event, refcon in
-        guard let refcon else { return Unmanaged.passUnretained(event) }
-        let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
-        // The run loop source is attached to the main run loop, so the callback
-        // always arrives on the main thread. `assumeIsolated` requires a
-        // Sendable result, hence the Bool round-trip.
-        let swallow = MainActor.assumeIsolated {
-            manager.handle(type: type, event: event) == nil
-        }
-        return swallow ? nil : Unmanaged.passUnretained(event)
-    }
-
-    private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
-        let passthrough = Unmanaged.passUnretained(event)
-
-        switch type {
-        case .tapDisabledByTimeout, .tapDisabledByUserInput:
-            if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
-            log.warning("Event tap was disabled by the system; re-enabled")
-            return passthrough
-        case .keyDown, .keyUp, .flagsChanged:
-            break
-        default:
-            return passthrough
-        }
-
-        if event.getIntegerValueField(.eventSourceUserData) == Self.syntheticEventTag {
-            return passthrough
-        }
-
-        let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
-        let flags = event.flags
-
+    mutating func handle(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) -> (swallow: Bool, events: [Event]) {
         if capture != nil {
-            return handleCapture(type: type, keyCode: keyCode, flags: flags) ? nil : passthrough
+            return handleCapture(type: type, keyCode: keyCode, flags: flags)
         }
-
         if hotkey.isModifierOnly {
-            handleModifierOnly(type: type, keyCode: keyCode, flags: flags)
-            return passthrough
+            return (false, handleModifierOnly(type: type, keyCode: keyCode, flags: flags))
         }
-
-        return handleKeyHotkey(type: type, keyCode: keyCode, flags: flags, event: event) ? nil : passthrough
+        return handleKeyHotkey(type: type, keyCode: keyCode, flags: flags)
     }
 
-    /// Returns `true` when the event should be swallowed.
-    private func handleKeyHotkey(type: CGEventType, keyCode: UInt16, flags: CGEventFlags, event: CGEvent) -> Bool {
+    private mutating func handleKeyHotkey(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) -> (swallow: Bool, events: [Event]) {
         switch type {
         case .keyDown:
             if !isDown {
-                guard hotkey.matches(keyCode: keyCode, flags: flags) else { return false }
+                guard hotkey.matches(keyCode: keyCode, flags: flags) else { return (false, []) }
                 isDown = true
                 cancelled = false
-                onPress?()
-                return true
+                return (true, [.press])
             }
             // Auto-repeat (or modifier drift) while held: keep swallowing.
-            return keyCode == hotkey.keyCode
+            return (keyCode == hotkey.keyCode, [])
         case .keyUp:
-            guard isDown, keyCode == hotkey.keyCode else { return false }
+            guard isDown, keyCode == hotkey.keyCode else { return (false, []) }
             isDown = false
-            onRelease?()
-            return true
+            return (true, [.release])
         default:
-            return false
+            return (false, [])
         }
     }
 
-    private func handleModifierOnly(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) {
+    private mutating func handleModifierOnly(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) -> [Event] {
         switch type {
         case .flagsChanged:
             let active = hotkey.isModifierChordActive(flags: flags)
             if active, !isDown {
                 isDown = true
                 cancelled = false
-                onPress?()
+                return [.press]
             } else if !active, isDown {
                 isDown = false
-                if !cancelled { onRelease?() }
+                let wasCancelled = cancelled
                 cancelled = false
+                return wasCancelled ? [] : [.release]
             }
+            return []
         case .keyDown:
-            // A real key was typed while the modifier is held: the user is
-            // invoking a shortcut (e.g. ⌥ + letter), not dictating.
             if isDown, !cancelled, !Hotkey.modifierKeyCodes.contains(keyCode) {
                 cancelled = true
-                onCancel?()
+                return [.cancel]
             }
+            return []
         default:
-            break
+            return []
         }
     }
 
-    /// Returns `true` when the event should be swallowed.
-    private func handleCapture(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) -> Bool {
-        guard var session = capture else { return false }
+    private mutating func handleCapture(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) -> (swallow: Bool, events: [Event]) {
+        guard var session = capture else { return (false, []) }
 
         switch type {
         case .flagsChanged:
@@ -242,40 +139,211 @@ final class HotkeyManager {
                 capture = session
             } else if session.sawModifier {
                 // Every modifier released without a key: modifier-only hotkey.
-                let result = Hotkey(
+                capture = nil
+                return (false, [.captured(Hotkey(
                     keyCode: session.lastModifierKeyCode,
                     modifiers: session.accumulatedFlags,
                     isModifierOnly: true
-                )
-                finishCapture(with: result)
+                ))])
             }
-            return false
+            return (false, [])
 
         case .keyDown:
             if keyCode == UInt16(kVK_Escape), flags.rawValue & Hotkey.modifierMask == 0 {
-                finishCapture(with: nil)
-                return true
+                capture = nil
+                return (true, [.captured(nil)])
             }
-            if Hotkey.modifierKeyCodes.contains(keyCode) { return true }
-            let result = Hotkey(
+            if Hotkey.modifierKeyCodes.contains(keyCode) { return (true, []) }
+            capture = nil
+            return (true, [.captured(Hotkey(
                 keyCode: keyCode,
                 modifiers: flags.rawValue & Hotkey.modifierMask,
                 isModifierOnly: false
-            )
-            finishCapture(with: result)
-            return true
+            ))])
 
         case .keyUp:
-            return true
+            return (true, [])
 
+        default:
+            return (false, [])
+        }
+    }
+}
+
+/// Listens for the push-to-talk hotkey system-wide using a CGEvent tap.
+///
+/// The tap runs on its own thread with its own run loop, so a busy main
+/// thread (audio engine start-up, SwiftUI layout, synchronous AX calls) can
+/// never delay the callback — a slow callback stalls every keystroke on the
+/// system and eventually gets the tap disabled. The callback touches only
+/// `TapState` under a lock and posts the resulting events to the main queue,
+/// where `onPress` / `onRelease` / `onCancel` and capture completions run.
+///
+/// The tap is *active* (`.defaultTap`) so that a key-based hotkey can be
+/// swallowed and does not also type into the focused app. Modifier-only
+/// hotkeys are never swallowed. The same tap is reused to record a new
+/// hotkey from the settings window (`beginCapture`).
+///
+/// All methods and properties are main-thread only unless noted.
+final class HotkeyManager: @unchecked Sendable {
+    /// Marker placed in `eventSourceUserData` on events Murmur posts itself
+    /// (the ⌘V used by the pasteboard inserter) so the tap ignores them.
+    nonisolated static let syntheticEventTag: Int64 = 0x4D75726D // "Murm"
+
+    var hotkey: Hotkey {
+        get { state.withLock { $0.hotkey } }
+        set { deliver(state.withLock { $0.setHotkey(newValue) }) }
+    }
+
+    var onPress: (() -> Void)?
+    var onRelease: (() -> Void)?
+    var onCancel: (() -> Void)?
+
+    private(set) var isRunning = false
+
+    // Shared with the tap thread.
+    private let state: OSAllocatedUnfairLock<TapState>
+    private let tapPort = OSAllocatedUnfairLock<CFMachPort?>(initialState: nil)
+
+    private var thread: Thread?
+    private var tapRunLoop: CFRunLoop?
+    private var captureCompletion: ((Hotkey?) -> Void)?
+    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "hotkey")
+
+    init(hotkey: Hotkey) {
+        state = OSAllocatedUnfairLock(initialState: TapState(hotkey: hotkey))
+    }
+
+    // MARK: Lifecycle
+
+    func start() throws {
+        guard !isRunning else { return }
+        guard AXIsProcessTrusted() else { throw HotkeyError.accessibilityNotGranted }
+
+        let ready = DispatchSemaphore(value: 0)
+        var created = false
+        let thread = Thread { [self] in
+            let mask: CGEventMask =
+                (1 << CGEventType.keyDown.rawValue)
+                | (1 << CGEventType.keyUp.rawValue)
+                | (1 << CGEventType.flagsChanged.rawValue)
+            guard let tap = CGEvent.tapCreate(
+                tap: .cgSessionEventTap,
+                place: .headInsertEventTap,
+                options: .defaultTap,
+                eventsOfInterest: mask,
+                callback: HotkeyManager.tapCallback,
+                userInfo: Unmanaged.passUnretained(self).toOpaque()
+            ) else {
+                ready.signal()
+                return
+            }
+            let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+            CGEvent.tapEnable(tap: tap, enable: true)
+            tapPort.withLock { $0 = tap }
+            tapRunLoop = CFRunLoopGetCurrent()
+            created = true
+            ready.signal()
+            CFRunLoopRun()
+        }
+        thread.name = "com.yevhen.murmur.event-tap"
+        thread.qualityOfService = .userInteractive
+        thread.start()
+        // Tap creation takes well under a millisecond; block so `start()`
+        // can report failure synchronously like before.
+        ready.wait()
+
+        guard created else { throw HotkeyError.tapCreationFailed }
+        self.thread = thread
+        isRunning = true
+        log.info("Event tap installed on its own thread")
+    }
+
+    func stop() {
+        guard isRunning else { return }
+        if let tap = tapPort.withLock({ port -> CFMachPort? in defer { port = nil }; return port }) {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        if let tapRunLoop { CFRunLoopStop(tapRunLoop) }
+        tapRunLoop = nil
+        thread = nil
+        isRunning = false
+        deliver(state.withLock { $0.reset() })
+    }
+
+    // MARK: Hotkey capture (settings UI)
+
+    /// Records the next key or modifier chord the user presses. Push-to-talk
+    /// is suspended while capturing. Escape cancels (`completion(nil)`).
+    func beginCapture(_ completion: @escaping (Hotkey?) -> Void) {
+        captureCompletion = completion
+        deliver(state.withLock { $0.beginCapture() })
+    }
+
+    func cancelCapture() {
+        state.withLock { $0.capture = nil }
+        let completion = captureCompletion
+        captureCompletion = nil
+        completion?(nil)
+    }
+
+    var isCapturing: Bool { state.withLock { $0.isCapturing } }
+
+    // MARK: Event handling (tap thread)
+
+    private static let tapCallback: CGEventTapCallBack = { _, type, event, refcon in
+        guard let refcon else { return Unmanaged.passUnretained(event) }
+        let manager = Unmanaged<HotkeyManager>.fromOpaque(refcon).takeUnretainedValue()
+        return manager.handle(type: type, event: event) ? nil : Unmanaged.passUnretained(event)
+    }
+
+    /// Runs on the tap thread. Returns `true` when the event should be
+    /// swallowed. Must stay cheap: no allocation-heavy work, no main-actor
+    /// state, no logging on the hot path.
+    private func handle(type: CGEventType, event: CGEvent) -> Bool {
+        switch type {
+        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            if let tap = tapPort.withLock({ $0 }) { CGEvent.tapEnable(tap: tap, enable: true) }
+            log.warning("Event tap was disabled by the system; re-enabled")
+            return false
+        case .keyDown, .keyUp, .flagsChanged:
+            break
         default:
             return false
         }
+
+        if event.getIntegerValueField(.eventSourceUserData) == Self.syntheticEventTag {
+            return false
+        }
+
+        let keyCode = UInt16(truncatingIfNeeded: event.getIntegerValueField(.keyboardEventKeycode))
+        let flags = event.flags
+        let (swallow, events) = state.withLock { $0.handle(type: type, keyCode: keyCode, flags: flags) }
+        deliver(events)
+        return swallow
     }
 
-    private func finishCapture(with hotkey: Hotkey?) {
-        let session = capture
-        capture = nil
-        session?.completion(hotkey)
+    // MARK: Delivery (any thread → main)
+
+    private func deliver(_ events: [TapState.Event]) {
+        guard !events.isEmpty else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            for event in events { self.dispatch(event) }
+        }
+    }
+
+    private func dispatch(_ event: TapState.Event) {
+        switch event {
+        case .press: onPress?()
+        case .release: onRelease?()
+        case .cancel: onCancel?()
+        case let .captured(hotkey):
+            let completion = captureCompletion
+            captureCompletion = nil
+            completion?(hotkey)
+        }
     }
 }

@@ -51,16 +51,25 @@ enum TextInserter {
 
         switch strategy {
         case .accessibilityThenPasteboard:
-            if AccessibilityInserter.insert(text) {
+            if await insertViaAccessibility(text) {
                 log.debug("Inserted via Accessibility")
             } else {
                 log.debug("Accessibility declined; pasting")
                 await PasteboardInserter.insert(text)
             }
         case .accessibilityOnly:
-            guard AccessibilityInserter.insert(text) else { throw InsertionError.accessibilityRejected }
+            guard await insertViaAccessibility(text) else { throw InsertionError.accessibilityRejected }
         case .pasteboardOnly:
             await PasteboardInserter.insert(text)
         }
+    }
+
+    /// Every AX call is synchronous IPC into the target app (up to 0.5 s each
+    /// with our timeout), so run them off the main thread. The AX API is
+    /// thread-safe and does not need a run loop for one-shot calls.
+    private static func insertViaAccessibility(_ text: String) async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            AccessibilityInserter.insert(text)
+        }.value
     }
 }

@@ -63,28 +63,36 @@ final class PermissionsManager: ObservableObject {
 
     // MARK: Polling
 
-    /// Accessibility grants don't notify the app, so poll. Calls are
-    /// reference-counted: the app keeps a slow background poll alive for its
-    /// whole lifetime and onboarding adds a faster one while it is on screen.
-    private var pollClients = 0
-    private var pollInterval: TimeInterval = 2.0
+    /// Accessibility grants don't notify the app, so poll. Each client
+    /// registers the interval it needs and the timer runs at the fastest one
+    /// currently requested: the app keeps a slow background poll alive for
+    /// its whole lifetime and onboarding adds a faster one while it is on
+    /// screen. Stop with the same interval you started with.
+    private var requestedIntervals: [TimeInterval] = []
+    /// Interval the timer is currently armed at; `nil` when not polling.
+    private(set) var pollInterval: TimeInterval?
 
-    func startPolling(interval: TimeInterval = 1.0) {
-        pollClients += 1
-        // Re-arm at the fastest interval any client asked for.
-        if pollTimer == nil || interval < pollInterval {
-            pollInterval = interval
-            pollTimer?.invalidate()
-            pollTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-                Task { @MainActor [weak self] in self?.refresh() }
-            }
-        }
+    func startPolling(interval: TimeInterval) {
+        requestedIntervals.append(interval)
+        rearmTimer()
     }
 
-    func stopPolling() {
-        pollClients = max(0, pollClients - 1)
-        guard pollClients == 0 else { return }
+    func stopPolling(interval: TimeInterval) {
+        if let index = requestedIntervals.firstIndex(of: interval) {
+            requestedIntervals.remove(at: index)
+        }
+        rearmTimer()
+    }
+
+    private func rearmTimer() {
+        let target = requestedIntervals.min()
+        guard target != pollInterval else { return }
         pollTimer?.invalidate()
         pollTimer = nil
+        pollInterval = target
+        guard let target else { return }
+        pollTimer = Timer.scheduledTimer(withTimeInterval: target, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in self?.refresh() }
+        }
     }
 }

@@ -55,7 +55,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 
     private func stopPollingIfNeeded() {
         guard isPolling else { return }
-        AppState.shared.permissions.stopPolling()
+        AppState.shared.permissions.stopPolling(interval: 1.0)
         isPolling = false
     }
 }
