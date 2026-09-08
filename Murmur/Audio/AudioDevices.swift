@@ -54,6 +54,25 @@ enum AudioDevices {
         stringProperty(of: id, selector: kAudioObjectPropertyName)
     }
 
+    /// Bluetooth inputs (AirPods, headsets) switch to a narrowband headset
+    /// profile when opened, which takes about a second and degrades playback
+    /// while recording — worth warning about once.
+    static func isBluetooth(_ id: AudioDeviceID) -> Bool {
+        var address = AudioObjectPropertyAddress(
+            mSelector: kAudioDevicePropertyTransportType,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var transport: UInt32 = 0
+        var size = UInt32(MemoryLayout<UInt32>.size)
+        guard AudioObjectGetPropertyData(id, &address, 0, nil, &size, &transport) == noErr else { return false }
+        return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
+    }
+
+    static var defaultInputIsBluetooth: Bool {
+        defaultInputDeviceID().map(isBluetooth) ?? false
+    }
+
     // MARK: Helpers
 
     private static func inputChannelCount(of id: AudioDeviceID) -> Int {

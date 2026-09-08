@@ -85,6 +85,15 @@ fi
 echo "▸ Building DMG"
 scripts/make-dmg.sh "$APP" "$DMG"
 
+# Gatekeeper's disk-image assessment (spctl --type open) requires the DMG
+# itself to be signed; notarization alone is not enough. Sign with the same
+# Developer ID Application identity the app was exported with.
+echo "▸ Signing DMG"
+IDENTITY="$(security find-identity -v -p codesigning | grep "Developer ID Application" | grep "$TEAM_ID" | head -1 | sed -E 's/.*"(.*)"/\1/')"
+[[ -n "$IDENTITY" ]] || { echo "No Developer ID Application identity for team $TEAM_ID in the keychain" >&2; exit 1; }
+codesign --sign "$IDENTITY" --timestamp "$DMG"
+codesign --verify --verbose=2 "$DMG"
+
 if [[ "${SKIP_NOTARIZE:-0}" != "1" ]]; then
   echo "▸ Notarizing DMG"
   xcrun notarytool submit "$DMG" --keychain-profile "$NOTARY_PROFILE" --wait

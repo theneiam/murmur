@@ -29,4 +29,9 @@ final class RecordingTests: XCTestCase {
         let unnamed = Recording(samples: [], wallClockDuration: 2)
         XCTAssertTrue(unnamed.silentCaptureFailureMessage.contains("the microphone"))
     }
+
+    func testBluetoothFlagDefaultsToFalse() {
+        XCTAssertFalse(Recording(samples: []).deviceIsBluetooth)
+        XCTAssertTrue(Recording(samples: [], deviceIsBluetooth: true).deviceIsBluetooth)
+    }
 }

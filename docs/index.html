@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Murmur — local push-to-talk dictation for Mac</title>
+<meta name="description" content="Hold a key, speak, release. Murmur transcribes on your Mac with Whisper and types the text where your cursor is. No cloud, no account, no telemetry.">
+<style>
+  :root { color-scheme: light dark; --fg: #1d1d1f; --muted: #6e6e73; --bg: #fff; --card: #f5f5f7; --accent: #0a84ff; --border: #e5e5ea; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f5f5f7; --muted: #a1a1a6; --bg: #000; --card: #1c1c1e; --border: #2c2c2e; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 17px/1.55 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif; color: var(--fg); background: var(--bg); }
+  main { max-width: 720px; margin: 0 auto; padding: 72px 24px 96px; }
+  h1 { font-size: 44px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 12px; }
+  .lede { font-size: 22px; color: var(--muted); margin: 0 0 32px; }
+  .cta { display: inline-block; background: var(--accent); color: #fff; text-decoration: none; padding: 12px 22px; border-radius: 10px; font-weight: 600; }
+  .cta + .note { display: block; color: var(--muted); font-size: 14px; margin-top: 10px; }
+  h2 { font-size: 22px; margin: 48px 0 12px; letter-spacing: -0.01em; }
+  ul { padding-left: 20px; } li { margin: 6px 0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 16px; }
+  .card { background: var(--card); border-radius: 12px; padding: 16px 18px; }
+  .card b { display: block; margin-bottom: 4px; }
+  kbd { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--card); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; }
+  footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 14px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Murmur</h1>
+  <p class="lede">Hold a key, speak, release. The words appear where your cursor is — transcribed on your Mac, never sent anywhere.</p>
+
+  <a class="cta" href="https://github.com/theneiam/murmur/releases/latest">Download for Mac</a>
+  <span class="note">Requires macOS 14 or later on Apple Silicon. Signed and notarized. Free, MIT-licensed.</span>
+
+  <h2>How it works</h2>
+  <div class="grid">
+    <div class="card"><b>Push-to-talk only</b>Hold your chosen key — a single modifier like right <kbd>⌥</kbd> works — and release to transcribe. No toggle mode to forget about.</div>
+    <div class="card"><b>On-device Whisper</b>OpenAI's Whisper models run on the Neural Engine via WhisperKit. Small, Medium and Large v3 Turbo; English, Russian and more, with auto-detect.</div>
+    <div class="card"><b>Types where you are</b>Text goes straight into the focused field through the Accessibility API, with a clipboard-restoring paste as fallback. Works in Notes, Mail, browsers, Slack, editors, terminals.</div>
+    <div class="card"><b>Clean output</b>Sentence capitalisation, optional filler-word removal, and a replacement dictionary for names and jargon the model mishears.</div>
+  </div>
+
+  <h2>What it needs, and why</h2>
+  <ul>
+    <li><b>Microphone</b> — to record while the key is held. Audio stays in memory and is discarded after transcription.</li>
+    <li><b>Accessibility</b> — to notice the push-to-talk key while another app is in front, and to place text at your cursor. Murmur matches keyboard events against your hotkey only; it does not record keystrokes.</li>
+    <li><b>Disk space</b> — 0.5–1.5 GB per model, downloaded once from Hugging Face when you choose it.</li>
+  </ul>
+
+  <h2>Privacy</h2>
+  <p>No cloud API, no account, no telemetry, no automatic update check. The only network use is the model download you start yourself (plus a one-time tokenizer fetch on first load). Full statement: <a href="https://github.com/theneiam/murmur/blob/main/PRIVACY.md">PRIVACY.md</a>.</p>
+
+  <h2>Support</h2>
+  <p>Problems or ideas: <a href="https://github.com/theneiam/murmur/issues">open an issue</a>. <em>Help → Save Diagnostics Report…</em> in the menu writes a file to your Desktop that makes bug reports much easier to act on — it contains no dictated text.</p>
+
+  <footer>© 2026 Yevhen Nezhuta · MIT License · Speech recognition by <a href="https://github.com/argmaxinc/argmax-oss-swift">WhisperKit</a>, models by <a href="https://github.com/openai/whisper">OpenAI Whisper</a>.</footer>
+</main>
+</body>
+</html>

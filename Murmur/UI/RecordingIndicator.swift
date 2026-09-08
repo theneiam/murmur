@@ -6,7 +6,8 @@ import AppKit
 final class IndicatorModel: ObservableObject {
     enum State: Equatable {
         case recording
-        case transcribing
+        /// Spinner with a label: "Transcribing…", "Loading model…".
+        case working(String)
         case message(String)
     }
 
@@ -44,10 +45,10 @@ struct IndicatorView: View {
                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .frame(width: 38, alignment: .trailing)
-            case .transcribing:
+            case let .working(label):
                 ProgressView()
                     .controlSize(.small)
-                Text("Transcribing…")
+                Text(label)
                     .font(.system(size: 13, weight: .medium))
             case let .message(text):
                 Image(systemName: "exclamationmark.circle")
@@ -115,10 +116,10 @@ final class IndicatorWindowController {
         present()
     }
 
-    func showTranscribing() {
+    func showWorking(_ label: String) {
         hideWork?.cancel()
         timer?.invalidate()
-        model.state = .transcribing
+        model.state = .working(label)
         present()
     }
 

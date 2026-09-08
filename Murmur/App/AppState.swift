@@ -22,6 +22,7 @@ final class AppState: ObservableObject {
     @Published private(set) var lastTranscript: String?
     @Published private(set) var lastError: String?
     @Published private(set) var hotkeyError: String?
+    @Published private(set) var lastInsertionMethod: InsertionMethod?
 
     let settings: SettingsStore
     let permissions: PermissionsManager
@@ -33,6 +34,7 @@ final class AppState: ObservableObject {
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "app")
     private var cancellables: Set<AnyCancellable> = []
     private var minimumUtterance: TimeInterval = 0.3
+    private var idleUnloadTask: Task<Void, Never>?
 
     private init() {
         settings = SettingsStore()
@@ -63,7 +65,16 @@ final class AppState: ObservableObject {
         settings.$model
             .dropFirst()
             .removeDuplicates()
-            .sink { [weak self] model in self?.models.activate(model) }
+            .sink { [weak self] model in
+                self?.models.activate(model)
+                self?.scheduleIdleUnload()
+            }
+            .store(in: &cancellables)
+
+        settings.$unloadAfterIdleMinutes
+            .dropFirst()
+            .removeDuplicates()
+            .sink { [weak self] _ in self?.scheduleIdleUnload() }
             .store(in: &cancellables)
 
         // `statusText` / `isReadyToDictate` derive from the child objects, so
@@ -96,6 +107,7 @@ final class AppState: ObservableObject {
         startHotkeyListener()
         if models.isDownloaded(settings.model) {
             models.activate(settings.model)
+            scheduleIdleUnload()
         }
         // Keep re-checking permissions so a grant made in System Settings is
         // picked up without relaunching.
@@ -108,8 +120,56 @@ final class AppState: ObservableObject {
         models.activeModel == settings.model && models.isReady
     }
 
+    /// The selected model is warm, loading, or on disk and loadable on demand.
+    /// Recording never waits for the model; transcription does.
+    var isModelAvailable: Bool {
+        models.isAvailable(settings.model)
+    }
+
     var isReadyToDictate: Bool {
-        permissions.allGranted && hotkeys.isRunning && isModelReady
+        permissions.allGranted && hotkeys.isRunning && isModelAvailable
+    }
+
+    static let bluetoothHint = "You're dictating through a Bluetooth headset. Its microphone takes about a second to switch on, so the start of each dictation may be cut. For dictation the built-in microphone is usually better — Settings → Audio."
+
+    // MARK: Idle unload
+
+    /// (Re)arms the idle timer. Fires only when nothing is in progress; the
+    /// next dictation reloads the model while the user is still speaking.
+    private func scheduleIdleUnload() {
+        idleUnloadTask?.cancel()
+        idleUnloadTask = nil
+        let minutes = settings.unloadAfterIdleMinutes
+        guard minutes > 0 else { return }
+        idleUnloadTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(minutes * 60))
+            guard let self, !Task.isCancelled, self.phase == .idle else { return }
+            await self.models.unloadForIdle()
+        }
+    }
+
+    // MARK: Insertion test (Settings → General)
+
+    /// Inserts a sample sentence into whatever app is frontmost after a short
+    /// countdown and reports which path delivered it, so insertion can be
+    /// checked per app without dictating.
+    func runInsertionTest() {
+        guard phase == .idle else { return }
+        let strategy = settings.insertionStrategy
+        indicator.showMessage("Click into the app you want to test — inserting a sample in 3 s…", for: 3)
+        Task { [weak self] in
+            try? await Task.sleep(for: .seconds(3))
+            guard let self, self.phase == .idle else { return }
+            let sample = "Murmur insertion test at \(Date().formatted(date: .omitted, time: .standard)). "
+            do {
+                let method = try await TextInserter.insert(sample, strategy: strategy)
+                self.lastInsertionMethod = method
+                self.log.info("Insertion test: \(method.rawValue, privacy: .public)")
+                self.indicator.showMessage("Inserted via \(method.displayName). Check that the text landed exactly once.", for: 5)
+            } catch {
+                self.indicator.showMessage(error.localizedDescription, for: 5)
+            }
+        }
     }
 
     /// One-line status for the menu bar.
@@ -120,12 +180,17 @@ final class AppState: ObservableObject {
         switch models.status(of: settings.model) {
         case .notDownloaded: return "Model not downloaded"
         case let .downloading(progress): return "Downloading model… \(Int(progress * 100))%"
-        case .downloaded, .loading: return "Loading model…"
         case let .failed(message): return "Model error: \(message)"
-        case .ready: break
+        case .ready, .downloaded, .loading: break
         }
         switch phase {
-        case .idle: return "Hold \(settings.hotkey.displayString) to dictate"
+        case .idle:
+            let base = "Hold \(settings.hotkey.displayString) to dictate"
+            switch models.status(of: settings.model) {
+            case .loading: return base + " (model loading…)"
+            case .downloaded: return base + " (model loads on first use)"
+            default: return base
+            }
         case .starting, .recording: return "Recording…"
         case .transcribing: return "Transcribing…"
         case .inserting: return "Inserting text…"
@@ -161,18 +226,28 @@ final class AppState: ObservableObject {
             indicator.showMessage("Microphone access is required")
             return
         }
-        guard isModelReady else {
+        // Recording does not need the model. If it is on disk but cold
+        // (first use, or dropped after the idle timeout) start loading now so
+        // it warms up while the user speaks; `finish` waits for it.
+        switch models.status(of: settings.model) {
+        case .ready, .loading:
+            break
+        case .downloaded:
+            models.activate(settings.model)
+        case let .downloading(progress):
             phase = .idle
-            switch models.status(of: settings.model) {
-            case let .downloading(progress):
-                indicator.showMessage("Downloading model… \(Int(progress * 100))%")
-            case .loading, .downloaded:
-                indicator.showMessage("Model is still loading…")
-            default:
-                indicator.showMessage("Choose and download a model in Settings")
-            }
+            indicator.showMessage("Downloading model… \(Int(progress * 100))%")
+            return
+        case let .failed(message):
+            phase = .idle
+            indicator.showMessage("Model error: \(message)", for: 4)
+            return
+        case .notDownloaded:
+            phase = .idle
+            indicator.showMessage("Choose and download a model in Settings")
             return
         }
+        idleUnloadTask?.cancel()
 
         do {
             try recorder.start(inputDeviceUID: settings.inputDeviceUID, maxDuration: settings.maxRecordingSeconds)
@@ -229,15 +304,24 @@ final class AppState: ObservableObject {
         }
 
         phase = .transcribing
-        indicator.showTranscribing()
+        indicator.showWorking(isModelReady ? "Transcribing…" : "Loading model…")
 
         let language = settings.language
         let options = settings.postProcessing
         let strategy = settings.insertionStrategy
+        let selectedModel = settings.model
 
         Task { [weak self] in
             guard let self else { return }
+            defer { self.scheduleIdleUnload() }
             do {
+                if !self.isModelReady {
+                    let ready = await self.models.awaitActivation()
+                    guard ready, self.models.activeModel == selectedModel else {
+                        throw TranscriptionError.modelNotLoaded
+                    }
+                    self.indicator.showWorking("Transcribing…")
+                }
                 let engine = self.models.engine
                 let samples = recording.samples
                 // A stalled CoreML call must never leave the app stuck in
@@ -263,9 +347,14 @@ final class AppState: ObservableObject {
 
                 self.phase = .inserting
                 self.indicator.hide()
-                try await TextInserter.insert(text, strategy: strategy)
+                let method = try await TextInserter.insert(text, strategy: strategy)
+                self.lastInsertionMethod = method
                 self.lastError = nil
-                self.log.info("Inserted \(text.count, privacy: .public) characters (\(transcript.processingTime, privacy: .public) s)")
+                self.log.info("Inserted \(text.count, privacy: .public) characters via \(method.rawValue, privacy: .public) (\(transcript.processingTime, privacy: .public) s)")
+                if recording.deviceIsBluetooth, !self.settings.hasShownBluetoothHint {
+                    self.settings.hasShownBluetoothHint = true
+                    self.indicator.showMessage(Self.bluetoothHint, for: 7)
+                }
             } catch {
                 self.lastError = error.localizedDescription
                 self.indicator.showMessage(error.localizedDescription, for: 3)

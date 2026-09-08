@@ -10,9 +10,14 @@ Hold a key, speak, release. The audio is transcribed on-device with Whisper (via
 - Small / Medium / Large-v3-Turbo models, English + Russian (+ a few more) with auto-detect. The model stays warm in memory.
 - Text goes in through the Accessibility API (clipboard untouched); falls back to ⌘V with clipboard restore.
 - Floating indicator with a live level meter while recording and a "Transcribing…" state until the text lands.
+- The model stays warm in memory while you dictate and is dropped after an idle period (30 min by default, configurable); the reload happens while you speak.
 - 2-minute cap per recording (configurable 15 s – 3 min).
 
-Requirements: macOS 14+, Apple Silicon, Xcode 16+.
+**Requirements:** macOS 14 or later, Apple Silicon. Building from source needs Xcode 16+.
+
+**Download:** signed and notarized DMGs are on the [releases page](https://github.com/theneiam/murmur/releases/latest). Website: <https://theneiam.github.io/murmur/> (source in `docs/`).
+
+**Privacy:** nothing leaves your Mac except the model download you start yourself; see [PRIVACY.md](PRIVACY.md). **Support:** [open an issue](https://github.com/theneiam/murmur/issues) and attach the file from *Help → Save Diagnostics Report…* (it contains no dictated text).
 
 ---
 
@@ -92,9 +97,21 @@ Murmur opens an onboarding window that walks through the three things it needs:
 
 **Transcription (`WhisperKitEngine`).** A single `WhisperKit` pipeline is created with `prewarm: true` and kept for the life of the process. Decoding uses prefill prompts, no timestamps and VAD chunking with concurrent workers, so a 10 s utterance is one chunk and a 2-minute recording is split on silence and decoded in parallel. Language is either fixed (`en`, `ru`, …) or auto-detected.
 
+**Memory.** A warm model costs 0.5–1.5 GB. `AppState` arms an idle timer after every dictation; when it fires the engine unloads (`ModelManager.unloadForIdle`). Recording never waits for the model — a cold model starts loading the moment the hotkey goes down and `finish` awaits it before transcribing — so the only visible cost of a reload is a longer "Loading model…" spinner after release.
+
 **Insertion (`TextInserter`).** Default strategy: get `kAXFocusedUIElement` from the system-wide AX element, check `kAXSelectedText` is settable, write the text (which replaces the selection or inserts at a collapsed caret), then verify by reading the selected range back. If the app ignores the write, fall back to the pasteboard path: snapshot every item/type on `NSPasteboard.general`, set the text, post ⌘V, wait 250 ms, restore the snapshot. Strategy is selectable in *Settings → General*.
 
 **Post-processing (`TextPostProcessor`).** Optional sentence capitalization, filler-word stripping (English + Russian fillers, Unicode-aware word boundaries), a whole-word replacement dictionary for names and jargon, and a trailing space so consecutive dictations don't run together.
+
+### Insertion compatibility
+
+*Settings → General → Test insertion…* inserts a sample sentence into whatever app you click into within 3 seconds and reports which path delivered it, so an app can be checked without dictating. The matrix below is what has been verified so far; please extend it.
+
+| App | Path | Notes |
+|---|---|---|
+| *(run the test and fill in: Notes, Mail, Safari, Chrome, Slack, VS Code, Xcode, Terminal, Word, Google Docs …)* | | |
+
+A "via paste" result is fine — it means the app ignores AX writes and the fallback did its job. What to watch for is text appearing **twice** (the app accepted the AX write but exposed nothing to verify it, so Murmur pasted as well) or not at all; either is a bug worth reporting with the app name.
 
 ### Latency
 
@@ -126,7 +143,8 @@ To use a different backend (whisper.cpp with Metal, MLX), implement `Transcripti
 
 ### Network use, precisely
 
-- **Model download** — on explicit user action only (Download / Retry buttons).
+- **Model download** — on explicit user action only (Download / Retry buttons). A free-space check runs first (bundle size + 20 % + 500 MB for the CoreML cache); downloads can be cancelled and resume where they stopped.
+- **Links** — *Check for Updates…*, *Help → Report a Problem…*, *Privacy Statement*, *Website* and the About panel open pages in your browser when clicked. There is no background update check.
 - **Tokenizer** — WhisperKit fetches the matching `openai/whisper-*` tokenizer files the first time a model is loaded and caches them under `Models/tokenizers/`. Loading is fully offline after that.
 - Nothing else. No telemetry, no accounts, no update checks.
 
@@ -167,6 +185,7 @@ Signing identity: automatic signing with `DEVELOPMENT_TEAM` picks the *Developer
 | Text lands in the wrong place | The target app lost focus (e.g. Settings window is frontmost). Murmur's indicator never takes focus; close Settings before dictating. |
 | First dictation takes many seconds | CoreML specialization on first load. Subsequent runs are fast; it is cached across launches. |
 | "Model error" after a macOS update | Delete the model in Settings → Model and download again (CoreML cache invalidated). |
+| Start of each dictation is cut off with AirPods / a Bluetooth headset | Bluetooth microphones take ~1 s to switch into headset mode after the engine starts. Murmur shows a one-time hint; pick the built-in microphone in *Settings → Audio* for dictation. |
 | Modifier-only hotkey triggers when using shortcuts | Expected — recording is cancelled as soon as you press another key, so nothing is transcribed. Pick a less-used key (right ⌥, fn, F13) if it's distracting. |
 | "No audio arrived from …" although Microphone is ticked | Core Audio started the engine but never delivered audio from the named device. With Bluetooth headsets (AirPods) this is usually a stuck headset-profile switch left behind by a conferencing app (Teams, Zoom): run `sudo killall coreaudiod` (audio drops for a second, apps reconnect) and try again; toggling Bluetooth does not clear it. If it happens with the built-in mic after a rebuild, the microphone grant no longer matches the app's signature: `tccutil reset Microphone com.yevhen.murmur`, relaunch, accept the prompt. |
 | Hotkey does nothing while Terminal / iTerm / a password prompt is in front | *Secure Keyboard Entry* is on. macOS hides keyboard events from every event tap while it is active. Turn it off (Terminal → Secure Keyboard Entry) or dictate into another app. |
@@ -179,9 +198,13 @@ Logs: `log stream --predicate 'subsystem == "com.yevhen.murmur"' --level debug`.
 xcodebuild test -project Murmur.xcodeproj -scheme Murmur -destination 'platform=macOS'
 ```
 
-`MurmurTests` covers the pure logic: text post-processing, hotkey matching and display names, tolerant settings decoding, model-bundle completeness and permission-poll bookkeeping. The tests are hosted in the app, whose delegate skips all start-up work under XCTest, so they can run while a real Murmur is in the menu bar.
+CI runs the same command on every push and pull request (`.github/workflows/ci.yml`, macOS runner, ad-hoc signing for the test host). `MurmurTests` covers the pure logic: text post-processing, hotkey matching and display names, tolerant settings decoding, model-bundle completeness and permission-poll bookkeeping. The tests are hosted in the app, whose delegate skips all start-up work under XCTest, so they can run while a real Murmur is in the menu bar.
 
 ---
+
+## License
+
+MIT — see `LICENSE`. Third-party components and model licenses are listed in `THIRD-PARTY-NOTICES.md` and under *About Murmur* in the menu.
 
 ## Non-goals
 

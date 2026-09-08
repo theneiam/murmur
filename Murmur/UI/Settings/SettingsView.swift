@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreAudio
 
 struct SettingsView: View {
     var body: some View {
@@ -22,6 +23,7 @@ struct SettingsView: View {
 // MARK: - General
 
 struct GeneralSettingsView: View {
+    @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var permissions: PermissionsManager
     @State private var launchAtLogin = LaunchAtLogin.isEnabled
@@ -69,6 +71,17 @@ struct GeneralSettingsView: View {
                     }
                 }
                 Text(settings.insertionStrategy.detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Button("Test insertion…") { appState.runInsertionTest() }
+                    if let method = appState.lastInsertionMethod {
+                        Text("Last insertion went via \(method.displayName).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text("Click the button, then click into any text field in another app within 3 seconds. A sample sentence is inserted and the indicator reports which path delivered it — useful for checking apps that behave oddly.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -194,6 +207,7 @@ struct HotkeyRecorderView: View {
 struct AudioSettingsView: View {
     @EnvironmentObject private var settings: SettingsStore
     @State private var devices: [AudioInputDevice] = []
+    @State private var effectiveIsBluetooth = false
 
     var body: some View {
         Form {
@@ -204,16 +218,28 @@ struct AudioSettingsView: View {
                         Text(device.name).tag(String?.some(device.uid))
                     }
                 }
+                .onChange(of: settings.inputDeviceUID) { _, _ in refresh() }
                 if let uid = settings.inputDeviceUID, !devices.contains(where: { $0.uid == uid }) {
                     Text("The selected device is not connected; the system default will be used until it returns.")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 }
-                Button("Refresh devices") { devices = AudioDevices.inputDevices() }
+                if effectiveIsBluetooth {
+                    Label("This is a Bluetooth headset. Its microphone takes about a second to switch on, so the start of each dictation may be cut, and playback quality drops while recording. The built-in microphone is usually the better choice for dictation.", systemImage: "wave.3.right")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Button("Refresh devices") { refresh() }
             }
         }
         .formStyle(.grouped)
-        .onAppear { devices = AudioDevices.inputDevices() }
+        .onAppear { refresh() }
+    }
+
+    private func refresh() {
+        devices = AudioDevices.inputDevices()
+        let effectiveID: AudioDeviceID? = settings.inputDeviceUID.flatMap(AudioDevices.deviceID(forUID:)) ?? AudioDevices.defaultInputDeviceID()
+        effectiveIsBluetooth = effectiveID.map(AudioDevices.isBluetooth) ?? false
     }
 }
 
@@ -253,7 +279,21 @@ struct ModelSettingsView: View {
                     }
                     .padding(.vertical, 4)
                 }
-                Text("Models are stored in ~/Library/Application Support/Murmur/Models and stay loaded in memory once used, so the first dictation after launch is the only slow one.")
+                Text("Models are stored in ~/Library/Application Support/Murmur/Models.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Memory") {
+                Picker("Unload model after", selection: $settings.unloadAfterIdleMinutes) {
+                    Text("Never").tag(0.0)
+                    Text("5 minutes idle").tag(5.0)
+                    Text("15 minutes idle").tag(15.0)
+                    Text("30 minutes idle").tag(30.0)
+                    Text("1 hour idle").tag(60.0)
+                    Text("3 hours idle").tag(180.0)
+                }
+                Text("A warm model uses \(settings.model.approximateSizeDescription.replacingOccurrences(of: "≈ ", with: "about ")) of memory. After the idle period it is dropped and reloaded on the next dictation — loading happens while you speak, so you only notice a slightly longer wait for the text.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

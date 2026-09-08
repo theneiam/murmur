@@ -13,7 +13,8 @@ struct MenuBarView: View {
             Text(appState.statusText)
 
             if let transcript = appState.lastTranscript, !transcript.isEmpty {
-                Text("Last: " + String(transcript.prefix(60)) + (transcript.count > 60 ? "…" : ""))
+                let via = appState.lastInsertionMethod.map { " · via \($0.displayName)" } ?? ""
+                Text("Last: " + String(transcript.prefix(60)) + (transcript.count > 60 ? "…" : "") + via)
                     .foregroundStyle(.secondary)
                 // Safety net: if insertion failed or landed in the wrong place,
                 // the dictation is still recoverable from here.
@@ -69,11 +70,34 @@ struct MenuBarView: View {
         }
         .keyboardShortcut(",", modifiers: .command)
 
+        Button("About Murmur") { AboutPanel.show() }
+
+        // User-initiated only: opens the releases page in the browser. Murmur
+        // never checks for updates on its own.
+        Button("Check for Updates…") { SupportLinks.open(SupportLinks.latestRelease) }
+
+        Menu("Help") {
+            Button("Report a Problem…") { SupportLinks.open(SupportLinks.newIssue) }
+            Button("Save Diagnostics Report…") { saveDiagnostics() }
+            Divider()
+            Button("Privacy Statement") { SupportLinks.open(SupportLinks.privacyPolicy) }
+            Button("Website") { SupportLinks.open(SupportLinks.website) }
+        }
+
         Divider()
 
         Button("Quit Murmur") {
             NSApp.terminate(nil)
         }
         .keyboardShortcut("q", modifiers: .command)
+    }
+
+    private func saveDiagnostics() {
+        do {
+            let url = try DiagnosticsReport.generate(state: appState)
+            appState.indicator.showMessage("Diagnostics saved to \(url.lastPathComponent) on the Desktop.", for: 4)
+        } catch {
+            appState.indicator.showMessage("Could not save diagnostics: \(error.localizedDescription)", for: 4)
+        }
     }
 }

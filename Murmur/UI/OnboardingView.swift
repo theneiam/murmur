@@ -234,7 +234,7 @@ struct ModelStatusRow: View {
             switch models.status(of: model) {
             case .notDownloaded:
                 Button("Download \(model.displayName)") {
-                    Task { await models.download(model, thenActivate: isSelected) }
+                    models.download(model, thenActivate: isSelected)
                 }
             case let .downloading(progress):
                 ProgressView(value: progress)
@@ -242,6 +242,8 @@ struct ModelStatusRow: View {
                 Text("\(Int(progress * 100))%")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                Button("Cancel") { models.cancelDownload(model) }
+                    .controlSize(.small)
             case .downloaded:
                 Label("Downloaded", systemImage: "checkmark.circle")
                     .foregroundStyle(.secondary)
@@ -263,7 +265,7 @@ struct ModelStatusRow: View {
                     .foregroundStyle(.red)
                     .lineLimit(2)
                 Button("Retry") {
-                    Task { await models.download(model, thenActivate: isSelected) }
+                    models.download(model, thenActivate: isSelected)
                 }
             }
         }

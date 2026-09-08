@@ -37,12 +37,17 @@ final class ModelManager: ObservableObject {
     /// Bumped on every `activate`; a queued load whose generation is stale
     /// (the user picked yet another model meanwhile) is skipped.
     private var loadGeneration = 0
+    /// The model of the most recent `activate` call, so a skipped stale
+    /// request can tell whether its model is still wanted.
+    private var latestRequested: WhisperModel?
+    private var downloadTasks: [WhisperModel: Task<Void, Never>] = [:]
 
-    init(engine: any TranscriptionEngine = WhisperKitEngine()) {
+    init(engine: any TranscriptionEngine = WhisperKitEngine(), rootDirectory: URL? = nil) {
         self.engine = engine
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        rootDirectory = support.appendingPathComponent("Murmur", isDirectory: true).appendingPathComponent("Models", isDirectory: true)
-        try? FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
+        self.rootDirectory = rootDirectory
+            ?? support.appendingPathComponent("Murmur", isDirectory: true).appendingPathComponent("Models", isDirectory: true)
+        try? FileManager.default.createDirectory(at: self.rootDirectory, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: tokenizerDirectory, withIntermediateDirectories: true)
         refreshStatuses()
     }
@@ -96,6 +101,16 @@ final class ModelManager: ObservableObject {
         return status(of: activeModel) == .ready
     }
 
+    /// `true` when `model` can be used for the next dictation: either warm,
+    /// or on disk and loadable on demand (recording does not need the model;
+    /// only transcription does).
+    func isAvailable(_ model: WhisperModel) -> Bool {
+        switch status(of: model) {
+        case .ready, .loading, .downloaded: return true
+        case .notDownloaded, .downloading, .failed: return false
+        }
+    }
+
     func refreshStatuses() {
         for model in WhisperModel.allCases {
             switch statuses[model] {
@@ -109,12 +124,56 @@ final class ModelManager: ObservableObject {
 
     // MARK: Download
 
+    // MARK: Free space
+
+    /// Headroom on top of the bundle size: CoreML writes a specialised copy
+    /// of the model into its cache on first load.
+    static let freeSpaceMargin: Int64 = 500 * 1_000_000
+
+    static func requiredFreeBytes(for model: WhisperModel) -> Int64 {
+        Int64(model.approximateSizeMB) * 1_000_000 * 12 / 10 + freeSpaceMargin
+    }
+
+    static func hasEnoughFreeSpace(for model: WhisperModel, availableBytes: Int64) -> Bool {
+        availableBytes >= requiredFreeBytes(for: model)
+    }
+
+    /// Bytes the system would let an important download use on the models volume.
+    func availableBytes() -> Int64? {
+        let values = try? rootDirectory.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        return values?.volumeAvailableCapacityForImportantUsage
+    }
+
+    // MARK: Download
+
     /// Downloads the model bundle (idempotent: already-present files are
-    /// skipped by the Hub client). This is the only network access Murmur
-    /// ever performs, and it only happens on explicit user action.
-    func download(_ model: WhisperModel, thenActivate: Bool = false) async {
+    /// skipped by the Hub client, so a cancelled or failed download resumes
+    /// where it stopped). This is the only network access Murmur ever
+    /// performs, and it only happens on explicit user action.
+    func download(_ model: WhisperModel, thenActivate: Bool = false) {
         guard !status(of: model).isBusy else { return }
+        if let available = availableBytes(), !Self.hasEnoughFreeSpace(for: model, availableBytes: available) {
+            let formatter = ByteCountFormatter()
+            formatter.countStyle = .file
+            let needed = formatter.string(fromByteCount: Self.requiredFreeBytes(for: model))
+            let have = formatter.string(fromByteCount: available)
+            statuses[model] = .failed("Not enough free disk space: needs about \(needed), \(have) available.")
+            return
+        }
         statuses[model] = .downloading(progress: 0)
+        downloadTasks[model] = Task { [weak self] in
+            await self?.performDownload(model, thenActivate: thenActivate)
+        }
+    }
+
+    /// Stops an in-progress download. Files already fetched stay on disk so a
+    /// later Download continues from there.
+    func cancelDownload(_ model: WhisperModel) {
+        downloadTasks[model]?.cancel()
+    }
+
+    private func performDownload(_ model: WhisperModel, thenActivate: Bool) async {
+        defer { downloadTasks[model] = nil }
         // The Hub client reports progress very frequently; coalesce to whole
         // percent so we don't spawn a main-actor hop per callback.
         let lastPercent = OSAllocatedUnfairLock(initialState: -1)
@@ -139,12 +198,23 @@ final class ModelManager: ObservableObject {
                     }
                 }
             )
-            statuses[model] = isDownloaded(model) ? .downloaded : .failed("Download finished but the model bundle is incomplete.")
-            log.info("Downloaded \(model.rawValue, privacy: .public)")
-            if thenActivate, isDownloaded(model) { activate(model) }
+            if isDownloaded(model) {
+                statuses[model] = .downloaded
+                log.info("Downloaded \(model.rawValue, privacy: .public)")
+                if thenActivate { activate(model) }
+            } else if Task.isCancelled {
+                statuses[model] = .notDownloaded
+            } else {
+                statuses[model] = .failed("Download finished but the model bundle is incomplete.")
+            }
         } catch {
-            log.error("Download of \(model.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
-            statuses[model] = .failed(error.localizedDescription)
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                log.info("Download of \(model.rawValue, privacy: .public) cancelled")
+                statuses[model] = isDownloaded(model) ? .downloaded : .notDownloaded
+            } else {
+                log.error("Download of \(model.rawValue, privacy: .public) failed: \(error.localizedDescription, privacy: .public)")
+                statuses[model] = .failed(error.localizedDescription)
+            }
         }
     }
 
@@ -179,12 +249,49 @@ final class ModelManager: ObservableObject {
         }
         loadGeneration += 1
         let generation = loadGeneration
+        latestRequested = model
+        // Reflect the request immediately so the UI shows a spinner rather
+        // than a stale "Use" button until the queued task gets to run.
+        if status(of: model) != .ready { statuses[model] = .loading }
         let previous = loadTask
         loadTask = Task { [weak self] in
             await previous?.value
-            guard let self, generation == self.loadGeneration else { return }
+            guard let self else { return }
+            guard generation == self.loadGeneration else {
+                // Superseded before it started. Unless a newer request wants
+                // the same model (or it is the one actually loading), put its
+                // status back so nothing is left showing "Loading" forever.
+                if self.latestRequested != model, self.activeModel != model, self.status(of: model) == .loading {
+                    self.statuses[model] = .downloaded
+                }
+                return
+            }
             await self.performActivate(model)
         }
+    }
+
+    /// Waits for whatever activation is in flight (including ones queued
+    /// behind it) and reports whether the engine ended up ready.
+    func awaitActivation() async -> Bool {
+        while true {
+            let generation = loadGeneration
+            await loadTask?.value
+            if generation == loadGeneration { break }
+        }
+        return isReady
+    }
+
+    /// Drops the warm model to free memory (≈0.5–1.5 GB). Files stay on
+    /// disk; `activate` brings it back. No-op while a load is queued.
+    func unloadForIdle() async {
+        guard let active = activeModel, status(of: active) == .ready else { return }
+        loadGeneration += 1
+        await loadTask?.value
+        guard activeModel == active, status(of: active) == .ready else { return }
+        await engine.unload()
+        statuses[active] = .downloaded
+        activeModel = nil
+        log.info("Unloaded \(active.rawValue, privacy: .public) after idle timeout")
     }
 
     private func performActivate(_ model: WhisperModel) async {

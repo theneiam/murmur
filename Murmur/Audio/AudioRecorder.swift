@@ -25,11 +25,14 @@ struct Recording {
     let wallClockDuration: TimeInterval
     /// Human-readable name of the input device that was used, when known.
     let deviceName: String?
+    /// The input was a Bluetooth headset (see `AudioDevices.isBluetooth`).
+    let deviceIsBluetooth: Bool
 
-    init(samples: [Float], wallClockDuration: TimeInterval = 0, deviceName: String? = nil) {
+    init(samples: [Float], wallClockDuration: TimeInterval = 0, deviceName: String? = nil, deviceIsBluetooth: Bool = false) {
         self.samples = samples
         self.wallClockDuration = wallClockDuration
         self.deviceName = deviceName
+        self.deviceIsBluetooth = deviceIsBluetooth
     }
 
     var duration: TimeInterval { Double(samples.count) / AudioRecorder.sampleRate }
@@ -77,6 +80,7 @@ final class AudioRecorder {
     private var autoStopFired = false
     private var startedAt: Date?
     private var deviceName: String?
+    private var deviceIsBluetooth = false
 
     private(set) var isRecording = false
 
@@ -95,12 +99,15 @@ final class AudioRecorder {
         let engine = AVAudioEngine()
         let input = engine.inputNode
 
-        if let uid = inputDeviceUID, let deviceID = AudioDevices.deviceID(forUID: uid) {
-            setInputDevice(deviceID, on: input)
-            deviceName = AudioDevices.name(of: deviceID)
+        let deviceID: AudioDeviceID?
+        if let uid = inputDeviceUID, let override = AudioDevices.deviceID(forUID: uid) {
+            setInputDevice(override, on: input)
+            deviceID = override
         } else {
-            deviceName = AudioDevices.defaultInputDeviceID().flatMap(AudioDevices.name(of:))
+            deviceID = AudioDevices.defaultInputDeviceID()
         }
+        deviceName = deviceID.flatMap(AudioDevices.name(of:))
+        deviceIsBluetooth = deviceID.map(AudioDevices.isBluetooth) ?? false
 
         let inputFormat = input.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
@@ -160,13 +167,15 @@ final class AudioRecorder {
         lock.unlock()
 
         let device = deviceName
+        let bluetooth = deviceIsBluetooth
         deviceName = nil
+        deviceIsBluetooth = false
         if captured.isEmpty {
             log.error("Recording stopped after \(elapsed, privacy: .public) s with no audio from \(device ?? "unknown device", privacy: .public); the HAL never delivered buffers")
         } else {
             log.debug("Recording stopped: \(captured.count, privacy: .public) samples")
         }
-        return Recording(samples: captured, wallClockDuration: elapsed, deviceName: device)
+        return Recording(samples: captured, wallClockDuration: elapsed, deviceName: device, deviceIsBluetooth: bluetooth)
     }
 
     // MARK: Processing

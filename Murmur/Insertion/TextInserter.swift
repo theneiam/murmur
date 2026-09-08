@@ -33,6 +33,19 @@ enum InsertionStrategy: String, CaseIterable, Codable, Identifiable {
     }
 }
 
+/// Which path actually delivered the text.
+enum InsertionMethod: String {
+    case accessibility
+    case pasteboard
+
+    var displayName: String {
+        switch self {
+        case .accessibility: return "Accessibility"
+        case .pasteboard: return "paste (⌘V)"
+        }
+    }
+}
+
 enum InsertionError: LocalizedError {
     case accessibilityRejected
 
@@ -46,21 +59,25 @@ enum InsertionError: LocalizedError {
 enum TextInserter {
     private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "insert")
 
-    static func insert(_ text: String, strategy: InsertionStrategy) async throws {
-        guard !text.isEmpty else { return }
+    @discardableResult
+    static func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionMethod {
+        guard !text.isEmpty else { return .accessibility }
 
         switch strategy {
         case .accessibilityThenPasteboard:
             if await insertViaAccessibility(text) {
                 log.debug("Inserted via Accessibility")
-            } else {
-                log.debug("Accessibility declined; pasting")
-                await PasteboardInserter.insert(text)
+                return .accessibility
             }
+            log.debug("Accessibility declined; pasting")
+            await PasteboardInserter.insert(text)
+            return .pasteboard
         case .accessibilityOnly:
             guard await insertViaAccessibility(text) else { throw InsertionError.accessibilityRejected }
+            return .accessibility
         case .pasteboardOnly:
             await PasteboardInserter.insert(text)
+            return .pasteboard
         }
     }
 

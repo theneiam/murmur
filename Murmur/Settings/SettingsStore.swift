@@ -12,11 +12,17 @@ final class SettingsStore: ObservableObject {
     @Published var postProcessing: PostProcessingOptions { didSet { save(postProcessing, key: .postProcessing) } }
     @Published var maxRecordingSeconds: Double { didSet { save(maxRecordingSeconds, key: .maxRecordingSeconds) } }
     @Published var playSounds: Bool { didSet { save(playSounds, key: .playSounds) } }
+    /// Minutes of inactivity after which the warm model is dropped from
+    /// memory (it reloads on the next dictation). 0 = keep it loaded forever.
+    @Published var unloadAfterIdleMinutes: Double { didSet { save(unloadAfterIdleMinutes, key: .unloadAfterIdleMinutes) } }
     @Published var hasCompletedOnboarding: Bool { didSet { save(hasCompletedOnboarding, key: .hasCompletedOnboarding) } }
+    /// The one-time "Bluetooth microphone" hint has been shown.
+    @Published var hasShownBluetoothHint: Bool { didSet { save(hasShownBluetoothHint, key: .hasShownBluetoothHint) } }
 
     private enum Key: String {
         case hotkey, inputDeviceUID, model, language, insertionStrategy
         case postProcessing, maxRecordingSeconds, playSounds, hasCompletedOnboarding
+        case unloadAfterIdleMinutes, hasShownBluetoothHint
         var storageKey: String { "murmur.\(rawValue)" }
     }
 
@@ -32,7 +38,9 @@ final class SettingsStore: ObservableObject {
         postProcessing = Self.load(PostProcessingOptions.self, key: .postProcessing, from: defaults) ?? PostProcessingOptions()
         maxRecordingSeconds = Self.load(Double.self, key: .maxRecordingSeconds, from: defaults) ?? 120
         playSounds = Self.load(Bool.self, key: .playSounds, from: defaults) ?? true
+        unloadAfterIdleMinutes = Self.load(Double.self, key: .unloadAfterIdleMinutes, from: defaults) ?? 30
         hasCompletedOnboarding = Self.load(Bool.self, key: .hasCompletedOnboarding, from: defaults) ?? false
+        hasShownBluetoothHint = Self.load(Bool.self, key: .hasShownBluetoothHint, from: defaults) ?? false
     }
 
     // MARK: Persistence

@@ -36,7 +36,7 @@ Quit any running Murmur before launching a new build — two instances would bot
 
 | Area | File | Role |
 |---|---|---|
-| Coordinator | `App/AppState.swift` | Singleton; push-to-talk state machine (`idle → starting → recording → transcribing → inserting`); wires everything |
+| Coordinator | `App/AppState.swift` | Singleton; push-to-talk state machine (`idle → starting → recording → transcribing → inserting`); wires everything; idle model unload timer; insertion test tool |
 | App shell | `App/MurmurApp.swift` | `MenuBarExtra` + `Settings` scenes, `AppDelegate` (accessory policy, onboarding) |
 | Hotkey | `Hotkey/Hotkey.swift`, `Hotkey/HotkeyManager.swift` | Model + display names; CGEvent tap, press/release/cancel, hotkey capture for Settings |
 | Audio | `Audio/AudioRecorder.swift`, `Audio/AudioDevices.swift` | AVAudioEngine → 16 kHz mono Float32, level meter, max-duration auto-stop; CoreAudio device list |
@@ -44,12 +44,12 @@ Quit any running Murmur before launching a new build — two instances would bot
 | Insertion | `Insertion/*` | `TextInserter` strategy switch → `AccessibilityInserter` (AX selected-text write + verification) or `PasteboardInserter` (⌘V + clipboard snapshot/restore) |
 | Text | `PostProcessing/TextPostProcessor.swift` | Capitalisation, filler stripping, replacement dictionary, trailing space |
 | UI | `UI/RecordingIndicator.swift`, `UI/MenuBarView.swift`, `UI/OnboardingView.swift`, `UI/Settings/SettingsView.swift` | Floating non-activating NSPanel; menu; first-run permissions + model download; 5-tab settings |
-| Support | `Permissions/`, `Settings/SettingsStore.swift`, `Support/LaunchAtLogin.swift` | Mic/AX permission polling, persisted settings, `SMAppService` |
+| Support | `Permissions/`, `Settings/SettingsStore.swift`, `Support/LaunchAtLogin.swift`, `Support/AboutPanel.swift`, `Support/SupportLinks.swift`, `Support/DiagnosticsReport.swift` | Mic/AX permission polling, persisted settings, `SMAppService`, About panel with credits, outbound URLs, diagnostics file (OSLogStore of the current process, last hour) |
 
 ## Product constraints (don't drift)
 
 - Push-to-talk **only** — no toggle/hands-free mode, no streaming/partial results.
-- No network at runtime except user-initiated model download (and the one-time tokenizer fetch). No accounts, telemetry, update checks.
+- No network at runtime except user-initiated model download (and the one-time tokenizer fetch). No accounts, telemetry, update checks. "Check for Updates…" and the Help links only open the browser (`SupportLinks`); keep it that way.
 - No Dock icon (`LSUIElement`), no windows that steal focus while dictating; the indicator panel is non-activating.
 - Text goes into other apps only; no editor UI of its own.
 
