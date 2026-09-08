@@ -31,6 +31,7 @@ jobs:
       - name: Build and test
         run: |
           set -o pipefail
+          mkdir -p build
           xcodebuild test \
             -project Murmur.xcodeproj \
             -scheme Murmur \
