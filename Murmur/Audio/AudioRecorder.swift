@@ -62,8 +62,18 @@ struct Recording {
 /// A fresh `AVAudioEngine` is created per recording so that input-device
 /// changes made in settings take effect immediately and the engine never
 /// carries stale state between utterances.
+///
+/// Bluetooth headsets (AirPods) switch from their music profile to their
+/// headset profile when the input is opened, which changes the device format
+/// mid-start. `AVAudioEngine` reacts by stopping itself and posting
+/// `AVAudioEngineConfigurationChange`; the app must rebuild the tap and start
+/// again, or the recording silently produces no audio. A watchdog covers the
+/// same failure when no notification arrives (`StartIO … error 35`).
 final class AudioRecorder {
     static let sampleRate: Double = 16_000
+    /// How long to wait for the first buffer before restarting the engine.
+    static let firstBufferTimeout: TimeInterval = 1.5
+    static let maxEngineRestarts = 3
 
     /// Called on the main thread with a level in 0…1.
     var onLevel: ((Float) -> Void)?
@@ -78,9 +88,14 @@ final class AudioRecorder {
     private var samples: [Float] = []
     private var maxSamples = Int.max
     private var autoStopFired = false
+    private var buffersReceived = 0
     private var startedAt: Date?
     private var deviceName: String?
     private var deviceIsBluetooth = false
+    private var deviceID: AudioDeviceID?
+    private var configurationObserver: NSObjectProtocol?
+    private var watchdog: DispatchWorkItem?
+    private var engineRestarts = 0
 
     private(set) var isRecording = false
 
@@ -96,18 +111,34 @@ final class AudioRecorder {
     func start(inputDeviceUID: String?, maxDuration: TimeInterval) throws {
         guard !isRecording else { throw AudioRecorderError.alreadyRecording }
 
-        let engine = AVAudioEngine()
-        let input = engine.inputNode
-
-        let deviceID: AudioDeviceID?
-        if let uid = inputDeviceUID, let override = AudioDevices.deviceID(forUID: uid) {
-            setInputDevice(override, on: input)
-            deviceID = override
-        } else {
-            deviceID = AudioDevices.defaultInputDeviceID()
-        }
+        let overrideID = inputDeviceUID.flatMap(AudioDevices.deviceID(forUID:))
+        deviceID = overrideID ?? AudioDevices.defaultInputDeviceID()
         deviceName = deviceID.flatMap(AudioDevices.name(of:))
         deviceIsBluetooth = deviceID.map(AudioDevices.isBluetooth) ?? false
+
+        lock.lock()
+        samples.removeAll(keepingCapacity: true)
+        samples.reserveCapacity(Int(maxDuration * Self.sampleRate))
+        maxSamples = Int(maxDuration * Self.sampleRate)
+        autoStopFired = false
+        buffersReceived = 0
+        lock.unlock()
+        engineRestarts = 0
+
+        try startEngine(overrideDeviceID: overrideID)
+        isRecording = true
+        startedAt = Date()
+    }
+
+    /// Builds a fresh engine, tap and converter for the current device format
+    /// and starts it. Used for the initial start and for every restart after
+    /// a configuration change or a silent start.
+    private func startEngine(overrideDeviceID: AudioDeviceID?) throws {
+        tearDownEngine()
+
+        let engine = AVAudioEngine()
+        let input = engine.inputNode
+        if let overrideDeviceID { setInputDevice(overrideDeviceID, on: input) }
 
         let inputFormat = input.outputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0, inputFormat.channelCount > 0 else {
@@ -116,13 +147,6 @@ final class AudioRecorder {
         guard let converter = AVAudioConverter(from: inputFormat, to: Self.outputFormat) else {
             throw AudioRecorderError.converterUnavailable
         }
-
-        lock.lock()
-        samples.removeAll(keepingCapacity: true)
-        samples.reserveCapacity(Int(maxDuration * Self.sampleRate))
-        maxSamples = Int(maxDuration * Self.sampleRate)
-        autoStopFired = false
-        lock.unlock()
 
         self.engine = engine
         self.converter = converter
@@ -134,29 +158,79 @@ final class AudioRecorder {
             self?.process(buffer: buffer, converter: converter, ratio: ratio)
         }
 
+        // The engine stops itself when the device's format changes (Bluetooth
+        // profile switch, sample-rate change, device unplugged). Rebuild and
+        // start again so the recording continues.
+        configurationObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange, object: engine, queue: .main
+        ) { [weak self] _ in
+            self?.restartEngine(reason: "engine configuration changed", overrideDeviceID: overrideDeviceID)
+        }
+
         engine.prepare()
         do {
             try engine.start()
         } catch {
-            input.removeTap(onBus: 0)
-            self.engine = nil
-            self.converter = nil
+            tearDownEngine()
             throw error
         }
-        isRecording = true
-        startedAt = Date()
-        log.debug("Recording started on \(self.deviceName ?? "unknown device", privacy: .public) (\(inputFormat.sampleRate, privacy: .public) Hz, \(inputFormat.channelCount, privacy: .public) ch)")
+        log.debug("Audio engine started on \(self.deviceName ?? "unknown device", privacy: .public) (\(inputFormat.sampleRate, privacy: .public) Hz, \(inputFormat.channelCount, privacy: .public) ch)")
+        armWatchdog(overrideDeviceID: overrideDeviceID)
+    }
+
+    /// If the HAL never delivers a buffer (StartIO kept failing with EAGAIN
+    /// while a Bluetooth device reconfigured), a fresh start usually succeeds
+    /// once the device has settled.
+    private func armWatchdog(overrideDeviceID: AudioDeviceID?) {
+        watchdog?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self, self.isRecording else { return }
+            self.lock.lock()
+            let received = self.buffersReceived
+            self.lock.unlock()
+            guard received == 0 else { return }
+            self.restartEngine(reason: "no audio within \(Self.firstBufferTimeout) s", overrideDeviceID: overrideDeviceID)
+        }
+        watchdog = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstBufferTimeout, execute: work)
+    }
+
+    private func restartEngine(reason: String, overrideDeviceID: AudioDeviceID?) {
+        guard isRecording else { return }
+        guard engineRestarts < Self.maxEngineRestarts else {
+            log.error("Audio engine restart limit reached (\(reason, privacy: .public)); giving up on this recording")
+            return
+        }
+        engineRestarts += 1
+        log.info("Restarting audio engine (attempt \(self.engineRestarts, privacy: .public)): \(reason, privacy: .public)")
+        do {
+            try startEngine(overrideDeviceID: overrideDeviceID)
+        } catch {
+            log.error("Audio engine restart failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func tearDownEngine() {
+        watchdog?.cancel()
+        watchdog = nil
+        if let configurationObserver {
+            NotificationCenter.default.removeObserver(configurationObserver)
+            self.configurationObserver = nil
+        }
+        if let engine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+        engine = nil
+        converter = nil
     }
 
     @discardableResult
     func stop() -> Recording {
-        guard isRecording, let engine else {
+        guard isRecording else {
             return Recording(samples: [])
         }
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
-        self.engine = nil
-        converter = nil
+        tearDownEngine()
         isRecording = false
         let elapsed = startedAt.map { Date().timeIntervalSince($0) } ?? 0
         startedAt = nil
@@ -168,12 +242,14 @@ final class AudioRecorder {
 
         let device = deviceName
         let bluetooth = deviceIsBluetooth
+        let restarts = engineRestarts
         deviceName = nil
         deviceIsBluetooth = false
+        deviceID = nil
         if captured.isEmpty {
-            log.error("Recording stopped after \(elapsed, privacy: .public) s with no audio from \(device ?? "unknown device", privacy: .public); the HAL never delivered buffers")
+            log.error("Recording stopped after \(elapsed, privacy: .public) s with no audio from \(device ?? "unknown device", privacy: .public) after \(restarts, privacy: .public) engine restart(s); the HAL never delivered buffers")
         } else {
-            log.debug("Recording stopped: \(captured.count, privacy: .public) samples")
+            log.debug("Recording stopped: \(captured.count, privacy: .public) samples (\(restarts, privacy: .public) engine restart(s))")
         }
         return Recording(samples: captured, wallClockDuration: elapsed, deviceName: device, deviceIsBluetooth: bluetooth)
     }
@@ -208,6 +284,7 @@ final class AudioRecorder {
 
         var reachedLimit = false
         lock.lock()
+        buffersReceived += 1
         if samples.count < maxSamples {
             let room = maxSamples - samples.count
             samples.append(contentsOf: chunk.prefix(room))
