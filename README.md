@@ -107,9 +107,17 @@ Murmur opens an onboarding window that walks through the three things it needs:
 
 *Settings → General → Test insertion…* inserts a sample sentence into whatever app you click into within 3 seconds and reports which path delivered it, so an app can be checked without dictating. The matrix below is what has been verified so far; please extend it.
 
-| App | Path | Notes |
+| App | Path | Result |
 |---|---|---|
-| *(run the test and fill in: Notes, Mail, Safari, Chrome, Slack, VS Code, Xcode, Terminal, Word, Google Docs …)* | | |
+| Notes | Accessibility | inserted once |
+| Mail (compose) | paste | inserted once — Mail's WebKit editor does not accept AX selected-text writes |
+| Gmail (browser) | paste | inserted once |
+| Slack | paste | inserted once |
+| Claude (desktop) | paste | inserted once |
+| Herdr | paste | inserted once |
+| *Not yet tested:* Safari / Chrome forms, VS Code, Xcode, Terminal, Word, Google Docs | | |
+
+Verified 2026-09-08 on macOS 26.5 with the "Accessibility, fall back to paste" strategy.
 
 A "via paste" result is fine — it means the app ignores AX writes and the fallback did its job. What to watch for is text appearing **twice** (the app accepted the AX write but exposed nothing to verify it, so Murmur pasted as well) or not at all; either is a bug worth reporting with the app name.
 
