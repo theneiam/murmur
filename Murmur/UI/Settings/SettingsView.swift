@@ -78,7 +78,7 @@ struct GeneralSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
-                    Button("Test insertion…") { appState.runInsertionTest() }
+                    Button("Test insertion…") { appState.session.insertSample() }
                     if let method = appState.lastInsertionMethod {
                         Text("Last insertion went via \(method.displayName).")
                             .font(.caption)

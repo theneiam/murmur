@@ -12,3 +12,6 @@ xcuserdata/
 
 # Local scratch from Claude sessions
 Claude outputs/
+
+# Machine-specific build settings (Team ID); see Config/Murmur.xcconfig
+Config/Local.xcconfig

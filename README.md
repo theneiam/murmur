@@ -33,7 +33,10 @@ murmur/
 └── Murmur/
     ├── App/
     │   ├── MurmurApp.swift      # @main, MenuBarExtra + Settings scenes, AppDelegate
-    │   └── AppState.swift       # coordinator + push-to-talk state machine
+    │   └── AppState.swift       # composition root + app-level policies
+    ├── Dictation/
+    │   ├── DictationSession.swift  # push-to-talk pipeline (record → transcribe → insert)
+    │   └── DictationSeams.swift    # the protocols it depends on + config/events
     ├── Hotkey/
     │   ├── Hotkey.swift         # hotkey model, matching, display names
     │   └── HotkeyManager.swift  # CGEvent tap: press/release detection + hotkey capture
@@ -73,7 +76,7 @@ xcodegen generate                # creates Murmur.xcodeproj (+ Info.plist, entit
 open Murmur.xcodeproj            # or: xcodebuild -scheme Murmur -configuration Debug build
 ```
 
-`project.yml` sets `DEVELOPMENT_TEAM`; change it to your own team ID there (not in Xcode's Signing tab, which `xcodegen generate` overwrites) and run. The first build resolves the `argmax-oss-swift` package (this is the renamed WhisperKit repo; the `WhisperKit` library product is what Murmur links).
+To sign with your own Apple Development certificate, copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig` (git-ignored) and put your Team ID in it, then run. Without it the build is ad-hoc signed: it works, but macOS asks for the Accessibility and Microphone permissions again after every rebuild. Don't set the team in Xcode's Signing tab — `xcodegen generate` overwrites it. The first build resolves the `argmax-oss-swift` package (this is the renamed WhisperKit repo; the `WhisperKit` library product is what Murmur links).
 
 ### First run
 
@@ -83,7 +86,7 @@ Murmur opens an onboarding window that walks through the three things it needs:
 2. **Accessibility** — required for the global hotkey (an active CGEvent tap) and for AXUIElement text insertion. The window offers the system prompt plus a direct link to *Privacy & Security → Accessibility*. macOS does not notify apps when this changes, so Murmur polls every second while onboarding is open (and every 2 s in the background) and brings the hotkey listener up the moment it's granted.
 3. **Model download** — the only time Murmur uses the network. Pick a model and press Download; progress is shown inline.
 
-> **Debug builds and Accessibility.** macOS ties the Accessibility grant to the code signature. With `DEVELOPMENT_TEAM` set, debug builds are signed with your stable Apple Development certificate and the grant survives rebuilds. If the team is missing, Xcode signs ad-hoc and every build is a new identity: the Accessibility toggle stays on but the app is not trusted, and you must remove Murmur from the list and add it again. `codesign -d -r- Murmur.app` should name the certificate, not a `cdhash`.
+> **Debug builds and Accessibility.** macOS ties the Accessibility grant to the code signature. With a Team ID in `Config/Local.xcconfig`, debug builds are signed with your stable Apple Development certificate and the grant survives rebuilds. Without it, Xcode signs ad-hoc and every build is a new identity: the Accessibility toggle stays on but the app is not trusted, and you must remove Murmur from the list and add it again. `codesign -d -r- Murmur.app` should name the certificate, not a `cdhash`.
 
 > **fn / 🌐 as the hotkey.** Set *System Settings → Keyboard → "Press 🌐 key to" → Do Nothing*, otherwise a short press opens the emoji picker.
 

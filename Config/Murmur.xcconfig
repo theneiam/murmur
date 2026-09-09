@@ -1,0 +1,11 @@
+// Shared build settings applied to every configuration (referenced from
+// project.yml). Machine-specific settings live in Local.xcconfig, which is
+// git-ignored and included here only if it exists.
+//
+// To sign debug builds with your own Apple Development certificate — which
+// keeps the Accessibility and Microphone grants stable across rebuilds — copy
+// Local.xcconfig.example to Local.xcconfig and put your Team ID in it. Without
+// it Xcode signs ad-hoc: the app still builds and runs, but macOS treats every
+// build as a new app and the permissions must be granted again each time.
+
+#include? "Local.xcconfig"

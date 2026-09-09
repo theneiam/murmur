@@ -3,26 +3,18 @@ import AppKit
 import Combine
 import os
 
-/// The app's coordinator: wires hotkey → recorder → engine → inserter and
-/// owns the push-to-talk state machine.
+/// The app's composition root: constructs the subsystems, wires the hotkey
+/// to the `DictationSession`, and owns app-level policies (permissions →
+/// hotkey listener, model activation on settings change, idle unload, the
+/// status panel). The push-to-talk pipeline itself lives in
+/// `DictationSession`.
 @MainActor
 final class AppState: ObservableObject {
     static let shared = AppState()
 
-    enum Phase: Equatable {
-        case idle
-        /// Hotkey pressed; the audio engine is spinning up.
-        case starting
-        case recording
-        case transcribing
-        case inserting
-    }
+    typealias Phase = DictationSession.Phase
 
-    @Published private(set) var phase: Phase = .idle
-    @Published private(set) var lastTranscript: String?
-    @Published private(set) var lastError: String?
     @Published private(set) var hotkeyError: String?
-    @Published private(set) var lastInsertionMethod: InsertionMethod?
 
     let settings: SettingsStore
     let permissions: PermissionsManager
@@ -30,10 +22,16 @@ final class AppState: ObservableObject {
     let hotkeys: HotkeyManager
     let recorder: AudioRecorder
     let indicator: IndicatorWindowController
+    let session: DictationSession
+
+    // Forwarded from the session so views observing only AppState keep working.
+    var phase: Phase { session.phase }
+    var lastTranscript: String? { session.lastTranscript }
+    var lastError: String? { session.lastError }
+    var lastInsertionMethod: InsertionMethod? { session.lastInsertionMethod }
 
     private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "app")
     private var cancellables: Set<AnyCancellable> = []
-    private var minimumUtterance: TimeInterval = 0.3
     private var idleUnloadTask: Task<Void, Never>?
 
     private init() {
@@ -44,15 +42,43 @@ final class AppState: ObservableObject {
         recorder = AudioRecorder()
         indicator = IndicatorWindowController()
 
-        hotkeys.onPress = { [weak self] in self?.hotkeyPressed() }
-        hotkeys.onRelease = { [weak self] in self?.hotkeyReleased() }
-        hotkeys.onCancel = { [weak self] in self?.cancelRecording() }
+        let settings = settings, permissions = permissions
+        session = DictationSession(
+            recorder: recorder,
+            models: models,
+            inserter: DefaultTextInserter(),
+            presenter: indicator,
+            config: {
+                DictationConfig(
+                    model: settings.model,
+                    language: settings.language,
+                    postProcessing: settings.postProcessing,
+                    insertionStrategy: settings.insertionStrategy,
+                    inputDeviceUID: settings.inputDeviceUID,
+                    maxRecordingSeconds: settings.maxRecordingSeconds,
+                    playSounds: settings.playSounds,
+                    microphoneAuthorized: permissions.microphone == .authorized
+                )
+            }
+        )
 
-        recorder.onLevel = { [weak self] level in self?.indicator.push(level: level) }
-        recorder.onAutoStop = { [weak self] recording in
-            self?.log.info("Recording hit the maximum duration; transcribing")
-            self?.finish(recording)
-        }
+        hotkeys.onPress = { [weak self] in self?.session.press() }
+        hotkeys.onRelease = { [weak self] in self?.session.release() }
+        hotkeys.onCancel = { [weak self] in self?.session.cancel() }
+
+        session.onEvent = { [weak self] event in self?.handle(event) }
+        session.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+
+        // Idle unload: pause while a dictation is in progress, re-arm after.
+        session.$phase
+            .removeDuplicates()
+            .dropFirst()
+            .sink { [weak self] phase in
+                if phase == .idle { self?.scheduleIdleUnload() } else { self?.idleUnloadTask?.cancel() }
+            }
+            .store(in: &cancellables)
 
         settings.$hotkey
             .removeDuplicates()
@@ -98,7 +124,7 @@ final class AppState: ObservableObject {
             models.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
             permissions.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
             settings.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
-            $phase.map { _ in () }.eraseToAnyPublisher()
+            session.$phase.map { _ in () }.eraseToAnyPublisher()
         )
         .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
         .sink { [weak self] in self?.refreshStatusPanel() }
@@ -141,12 +167,6 @@ final class AppState: ObservableObject {
         if settings.showStatusPanel, phase == .idle { indicator.showIdle() }
     }
 
-    /// Readiness is tied to the *selected* model: switching to a model that is
-    /// not downloaded must not silently keep dictating with the previous one.
-    var isModelReady: Bool {
-        models.activeModel == settings.model && models.isReady
-    }
-
     /// The selected model is warm, loading, or on disk and loadable on demand.
     /// Recording never waits for the model; transcription does.
     var isModelAvailable: Bool {
@@ -158,6 +178,19 @@ final class AppState: ObservableObject {
     }
 
     static let bluetoothHint = "You're dictating through a Bluetooth headset. Its microphone takes about a second to switch on, so the start of each dictation may be cut. For dictation the built-in microphone is usually better — Settings → Audio."
+
+    // MARK: Dictation events
+
+    private func handle(_ event: DictationEvent) {
+        switch event {
+        case .usedBluetoothInput:
+            guard !settings.hasShownBluetoothHint else { return }
+            settings.hasShownBluetoothHint = true
+            indicator.showMessage(Self.bluetoothHint, for: 7)
+        case .inserted, .noSpeech, .failed:
+            break
+        }
+    }
 
     // MARK: Idle unload
 
@@ -172,30 +205,6 @@ final class AppState: ObservableObject {
             try? await Task.sleep(for: .seconds(minutes * 60))
             guard let self, !Task.isCancelled, self.phase == .idle else { return }
             await self.models.unloadForIdle()
-        }
-    }
-
-    // MARK: Insertion test (Settings → General)
-
-    /// Inserts a sample sentence into whatever app is frontmost after a short
-    /// countdown and reports which path delivered it, so insertion can be
-    /// checked per app without dictating.
-    func runInsertionTest() {
-        guard phase == .idle else { return }
-        let strategy = settings.insertionStrategy
-        indicator.showMessage("Click into the app you want to test — inserting a sample in 3 s…", for: 3)
-        Task { [weak self] in
-            try? await Task.sleep(for: .seconds(3))
-            guard let self, self.phase == .idle else { return }
-            let sample = "Murmur insertion test at \(Date().formatted(date: .omitted, time: .standard)). "
-            do {
-                let method = try await TextInserter.insert(sample, strategy: strategy)
-                self.lastInsertionMethod = method
-                self.log.info("Insertion test: \(method.rawValue, privacy: .public)")
-                self.indicator.showMessage("Inserted via \(method.displayName). Check that the text landed exactly once.", for: 5)
-            } catch {
-                self.indicator.showMessage(error.localizedDescription, for: 5)
-            }
         }
     }
 
@@ -233,178 +242,5 @@ final class AppState: ObservableObject {
             hotkeyError = error.localizedDescription
             log.error("Hotkey listener failed: \(error.localizedDescription, privacy: .public)")
         }
-    }
-
-    // MARK: Push-to-talk state machine
-
-    /// Delivered on the main queue by `HotkeyManager`, already off the event
-    /// tap thread, so it is safe to bring the audio engine up right here.
-    private func hotkeyPressed() {
-        guard phase == .idle else { return }
-        phase = .starting
-        beginRecording()
-    }
-
-    private func beginRecording() {
-        guard phase == .starting else { return }
-
-        guard permissions.microphone == .authorized else {
-            phase = .idle
-            indicator.showMessage("Microphone access is required")
-            return
-        }
-        // Recording does not need the model. If it is on disk but cold
-        // (first use, or dropped after the idle timeout) start loading now so
-        // it warms up while the user speaks; `finish` waits for it.
-        switch models.status(of: settings.model) {
-        case .ready, .loading:
-            break
-        case .downloaded:
-            models.activate(settings.model)
-        case let .downloading(progress):
-            phase = .idle
-            indicator.showMessage("Downloading model… \(Int(progress * 100))%")
-            return
-        case let .failed(message):
-            phase = .idle
-            indicator.showMessage("Model error: \(message)", for: 4)
-            return
-        case .notDownloaded:
-            phase = .idle
-            indicator.showMessage("Choose and download a model in Settings")
-            return
-        }
-        idleUnloadTask?.cancel()
-
-        do {
-            try recorder.start(inputDeviceUID: settings.inputDeviceUID, maxDuration: settings.maxRecordingSeconds)
-            phase = .recording
-            indicator.showRecording()
-            if settings.playSounds { Sounds.play(.start) }
-        } catch {
-            phase = .idle
-            lastError = error.localizedDescription
-            indicator.showMessage(error.localizedDescription)
-        }
-    }
-
-    private func hotkeyReleased() {
-        switch phase {
-        case .starting:
-            // Released before the engine came up: a tap, not an utterance.
-            phase = .idle
-        case .recording:
-            let recording = recorder.stop()
-            finish(recording)
-        default:
-            break
-        }
-    }
-
-    private func cancelRecording() {
-        switch phase {
-        case .starting:
-            phase = .idle
-        case .recording:
-            recorder.stop()
-            phase = .idle
-            indicator.hide()
-        default:
-            break
-        }
-    }
-
-    private func finish(_ recording: Recording) {
-        guard phase == .recording else { return }
-        if settings.playSounds { Sounds.play(.stop) }
-
-        guard recording.duration >= minimumUtterance else {
-            phase = .idle
-            if recording.isSilentCaptureFailure(minimumUtterance: minimumUtterance) {
-                let message = recording.silentCaptureFailureMessage
-                lastError = message
-                indicator.showMessage(message, for: 5)
-            } else {
-                indicator.hide()
-            }
-            return
-        }
-
-        phase = .transcribing
-        indicator.showWorking(isModelReady ? "Transcribing…" : "Loading model…")
-
-        let language = settings.language
-        let options = settings.postProcessing
-        let strategy = settings.insertionStrategy
-        let selectedModel = settings.model
-
-        Task { [weak self] in
-            guard let self else { return }
-            defer { self.scheduleIdleUnload() }
-            do {
-                if !self.isModelReady {
-                    let ready = await self.models.awaitActivation()
-                    guard ready, self.models.activeModel == selectedModel else {
-                        throw TranscriptionError.modelNotLoaded
-                    }
-                    self.indicator.showWorking("Transcribing…")
-                }
-                let engine = self.models.engine
-                let samples = recording.samples
-                // A stalled CoreML call must never leave the app stuck in
-                // `.transcribing` with no way back to idle.
-                let transcript = try await withThrowingTaskGroup(of: Transcript.self) { group in
-                    group.addTask { try await engine.transcribe(samples: samples, language: language) }
-                    group.addTask {
-                        try await Task.sleep(for: .seconds(90))
-                        throw TranscriptionError.timedOut
-                    }
-                    let first = try await group.next()!
-                    group.cancelAll()
-                    return first
-                }
-                let text = TextPostProcessor.process(transcript.text, options: options)
-                self.lastTranscript = text.trimmingCharacters(in: .whitespaces)
-
-                guard !text.isEmpty else {
-                    self.indicator.showMessage("Didn't catch that", for: 1.2)
-                    self.phase = .idle
-                    return
-                }
-
-                self.phase = .inserting
-                self.indicator.hide()
-                let method = try await TextInserter.insert(text, strategy: strategy)
-                self.lastInsertionMethod = method
-                self.lastError = nil
-                self.log.info("Inserted \(text.count, privacy: .public) characters via \(method.rawValue, privacy: .public) (\(transcript.processingTime, privacy: .public) s)")
-                if recording.deviceIsBluetooth, !self.settings.hasShownBluetoothHint {
-                    self.settings.hasShownBluetoothHint = true
-                    self.indicator.showMessage(Self.bluetoothHint, for: 7)
-                }
-            } catch {
-                self.lastError = error.localizedDescription
-                self.indicator.showMessage(error.localizedDescription, for: 3)
-                self.log.error("Dictation failed: \(error.localizedDescription, privacy: .public)")
-            }
-            self.phase = .idle
-        }
-    }
-}
-
-/// Subtle start/stop cues using system sounds (no bundled assets needed).
-/// The `NSSound` instances are kept alive: `play()` is asynchronous and a
-/// sound released at the end of the statement may never be heard.
-@MainActor
-enum Sounds {
-    enum Cue { case start, stop }
-
-    private static let start = NSSound(named: "Tink")
-    private static let stop = NSSound(named: "Pop")
-
-    static func play(_ cue: Cue) {
-        let sound = cue == .start ? start : stop
-        sound?.stop()
-        sound?.play()
     }
 }

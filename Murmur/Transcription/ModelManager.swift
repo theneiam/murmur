@@ -101,14 +101,24 @@ final class ModelManager: ObservableObject {
         return status(of: activeModel) == .ready
     }
 
-    /// `true` when `model` can be used for the next dictation: either warm,
-    /// or on disk and loadable on demand (recording does not need the model;
-    /// only transcription does).
-    func isAvailable(_ model: WhisperModel) -> Bool {
+    /// The single answer to "can `model` serve the next dictation?" — see
+    /// `ModelAvailability`. Recording does not need the model; transcription
+    /// does, so `.cold` and `.loading` still allow a dictation to start.
+    func availability(of model: WhisperModel) -> ModelAvailability {
         switch status(of: model) {
-        case .ready, .loading, .downloaded: return true
-        case .notDownloaded, .downloading, .failed: return false
+        case .ready: return activeModel == model ? .warm : .cold
+        case .loading: return .loading
+        case .downloaded: return .cold
+        case .notDownloaded: return .blocked(reason: "Choose and download a model in Settings")
+        case let .downloading(progress): return .blocked(reason: "Downloading model… \(Int(progress * 100))%")
+        case let .failed(message): return .blocked(reason: "Model error: \(message)")
         }
+    }
+
+    /// `true` when `model` can be used for the next dictation (not blocked).
+    func isAvailable(_ model: WhisperModel) -> Bool {
+        if case .blocked = availability(of: model) { return false }
+        return true
     }
 
     func refreshStatuses() {
@@ -279,6 +289,12 @@ final class ModelManager: ObservableObject {
             if generation == loadGeneration { break }
         }
         return isReady
+    }
+
+    /// Waits for in-flight activation and reports whether `model` ended up warm.
+    func awaitActivation(of model: WhisperModel) async -> Bool {
+        let ready = await awaitActivation()
+        return ready && activeModel == model
     }
 
     /// Drops the warm model to free memory (≈0.5–1.5 GB). Files stay on

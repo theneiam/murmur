@@ -10,22 +10,26 @@ options:
   createIntermediateGroups: true
   generateEmptyDirectories: true
 
+# Per-configuration xcconfig. Contributors put their Team ID in the git-ignored
+# Config/Local.xcconfig (see Config/Local.xcconfig.example); it is included
+# optionally, so a fresh clone builds ad-hoc-signed with no edits.
+configFiles:
+  Debug: Config/Murmur.xcconfig
+  Release: Config/Murmur.xcconfig
+
 settings:
   base:
     SWIFT_VERSION: "5.10"
     SWIFT_STRICT_CONCURRENCY: minimal
     MACOSX_DEPLOYMENT_TARGET: "14.0"
     ARCHS: arm64
-    # The team MUST live here, not only in Xcode's Signing tab: `xcodegen
-    # generate` rewrites the project and would drop a team set in the UI.
-    # Without a team, automatic signing falls back to ad-hoc "Sign to Run
-    # Locally", whose designated requirement is the binary's cdhash — it
-    # changes every build, and macOS ties the Accessibility grant to it, so
-    # the toggle stays on while AXIsProcessTrusted() returns false. With the
-    # team set, the requirement is the Apple Development certificate and the
-    # grant survives rebuilds. scripts/release.sh overrides it with $TEAM_ID.
+    # DEVELOPMENT_TEAM is deliberately not here: it comes from the
+    # git-ignored Config/Local.xcconfig (per developer) or, for releases,
+    # from scripts/release.sh via $TEAM_ID. Do not set it in Xcode's Signing
+    # tab either — `xcodegen generate` would drop it. Without a team the
+    # build is ad-hoc signed and macOS re-asks for Accessibility/Microphone
+    # after every rebuild; see Config/Murmur.xcconfig.
     CODE_SIGN_STYLE: Automatic
-    DEVELOPMENT_TEAM: 55GBH53Y3N
     ENABLE_HARDENED_RUNTIME: YES
     ENABLE_USER_SCRIPT_SANDBOXING: NO
     MARKETING_VERSION: "1.1.0"

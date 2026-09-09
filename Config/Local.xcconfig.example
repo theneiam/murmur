@@ -1,0 +1,6 @@
+// Copy to Local.xcconfig (git-ignored) and fill in your 10-character Apple
+// Developer Team ID (Xcode → Settings → Accounts → your team → Team ID).
+// Release builds ignore this file: scripts/release.sh takes TEAM_ID from
+// the environment.
+
+DEVELOPMENT_TEAM = XXXXXXXXXX
