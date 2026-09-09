@@ -5,8 +5,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-09-09
+
 ### Changed
 - The push-to-talk pipeline moved out of `AppState` into a tested `DictationSession`; no user-visible change.
+- Repository prepared for contributors: SwiftFormat, CONTRIBUTING and companion docs, issue/PR templates, CI format lint, Dependabot.
 - Contributors set their Apple Team ID in a git-ignored `Config/Local.xcconfig` instead of editing `project.yml`.
 - Status panel: the idle pill shows only the glyph and the name; no more hotkey hint.
 
@@ -26,6 +29,7 @@ via Accessibility with a clipboard-restoring paste fallback; Small, Medium and
 Large v3 Turbo models; About panel, diagnostics report, idle model unload,
 signed and notarized DMG.
 
-[Unreleased]: https://github.com/theneiam/murmur/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/theneiam/murmur/compare/v1.1.1...HEAD
+[1.1.1]: https://github.com/theneiam/murmur/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/theneiam/murmur/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/theneiam/murmur/releases/tag/v1.0.0
