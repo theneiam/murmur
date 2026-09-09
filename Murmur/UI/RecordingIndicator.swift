@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 /// View model for the floating indicator.
 @MainActor
@@ -177,8 +177,8 @@ final class IndicatorWindowController {
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self, let start = self.recordingStart else { return }
-                self.model.elapsed = Date().timeIntervalSince(start)
+                guard let self, let start = recordingStart else { return }
+                model.elapsed = Date().timeIntervalSince(start)
             }
         }
         present()
@@ -226,17 +226,17 @@ final class IndicatorWindowController {
         guard let panel, panel.isVisible else { return }
         generation &+= 1
         let current = generation
-        NSAnimationContext.runAnimationGroup({ ctx in
+        NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.15
             panel.animator().alphaValue = 0
-        }, completionHandler: { [weak self] in
+        } completionHandler: { [weak self] in
             // The completion handler is @Sendable; AppKit invokes it on the
             // main thread, so hop back into MainActor isolation explicitly.
             MainActor.assumeIsolated {
                 guard let self, self.generation == current else { return }
                 self.panel?.orderOut(nil)
             }
-        })
+        }
     }
 
     // MARK: Panel
@@ -249,7 +249,7 @@ final class IndicatorWindowController {
         // after it has laid out so the pill fits its content exactly.
         DispatchQueue.main.async { [weak self] in
             guard let self, let panel = self.panel, panel.isVisible else { return }
-            self.position(panel)
+            position(panel)
         }
         if !panel.isVisible {
             panel.alphaValue = 0

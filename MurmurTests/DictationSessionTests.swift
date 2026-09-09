@@ -1,5 +1,5 @@
-import XCTest
 @testable import Murmur
+import XCTest
 
 // MARK: - Fakes (one per seam)
 
@@ -57,7 +57,10 @@ final class FakeModels: ModelProviding {
     private(set) var awaitCalls: [WhisperModel] = []
 
     func availability(of model: WhisperModel) -> ModelAvailability { availabilityValue }
-    func activate(_ model: WhisperModel) { activateCalls.append(model); availabilityValue = .loading }
+    func activate(_ model: WhisperModel) { activateCalls.append(model)
+        availabilityValue = .loading
+    }
+
     func awaitActivation(of model: WhisperModel) async -> Bool {
         awaitCalls.append(model)
         if awaitResult { availabilityValue = .warm }
@@ -123,14 +126,14 @@ final class DictationSessionTests: XCTestCase {
     private func makeSession(timeout: Duration = .seconds(5)) {
         session = DictationSession(
             recorder: recorder, models: models, inserter: inserter, presenter: presenter,
-            config: { [unowned self] in self.config }, transcriptionTimeout: timeout
+            config: { [unowned self] in config }, transcriptionTimeout: timeout
         )
         session.onEvent = { [weak self] in self?.events.append($0) }
     }
 
     /// Runs the loop until the session is idle again (or fails after ~3 s).
     private func awaitIdle(file: StaticString = #filePath, line: UInt = #line) async {
-        for _ in 0..<600 {
+        for _ in 0 ..< 600 {
             if session.phase == .idle { return }
             try? await Task.sleep(for: .milliseconds(5))
         }
@@ -327,10 +330,10 @@ final class DictationSessionTests: XCTestCase {
 
     func testInsertSampleUsesTheInserterAndReportsTheMethod() async {
         session = DictationSession(recorder: recorder, models: models, inserter: inserter, presenter: presenter,
-                                   config: { [unowned self] in self.config }, sampleDelay: .milliseconds(10))
+                                   config: { [unowned self] in config }, sampleDelay: .milliseconds(10))
         inserter.method = .pasteboard
         session.insertSample()
-        for _ in 0..<200 where inserter.inserted.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
+        for _ in 0 ..< 200 where inserter.inserted.isEmpty { try? await Task.sleep(for: .milliseconds(5)) }
         XCTAssertEqual(inserter.inserted.count, 1)
         XCTAssertTrue(inserter.inserted.first?.text.hasPrefix("Murmur insertion test") ?? false)
         XCTAssertEqual(session.lastInsertionMethod, .pasteboard)

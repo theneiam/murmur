@@ -1,5 +1,5 @@
-import XCTest
 @testable import Murmur
+import XCTest
 
 final class ModelBundleTests: XCTestCase {
     private var folder: URL!

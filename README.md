@@ -203,6 +203,10 @@ Signing identity: automatic signing with `DEVELOPMENT_TEAM` picks the *Developer
 
 Logs: `log stream --predicate 'subsystem == "com.yevhen.murmur"' --level debug`.
 
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test and style, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the shape of the code. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
+
 ## Tests
 
 ```bash

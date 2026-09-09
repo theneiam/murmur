@@ -1,6 +1,6 @@
 import Foundation
-import WhisperKit
 import os
+import WhisperKit
 
 enum ModelStatus: Equatable {
     case notDownloaded
@@ -115,12 +115,6 @@ final class ModelManager: ObservableObject {
         }
     }
 
-    /// `true` when `model` can be used for the next dictation (not blocked).
-    func isAvailable(_ model: WhisperModel) -> Bool {
-        if case .blocked = availability(of: model) { return false }
-        return true
-    }
-
     func refreshStatuses() {
         for model in WhisperModel.allCases {
             switch statuses[model] {
@@ -204,7 +198,7 @@ final class ModelManager: ObservableObject {
                     guard changed else { return }
                     Task { @MainActor [weak self] in
                         guard let self, case .downloading = self.status(of: model) else { return }
-                        self.statuses[model] = .downloading(progress: fraction)
+                        statuses[model] = .downloading(progress: fraction)
                     }
                 }
             )
@@ -267,16 +261,16 @@ final class ModelManager: ObservableObject {
         loadTask = Task { [weak self] in
             await previous?.value
             guard let self else { return }
-            guard generation == self.loadGeneration else {
+            guard generation == loadGeneration else {
                 // Superseded before it started. Unless a newer request wants
                 // the same model (or it is the one actually loading), put its
                 // status back so nothing is left showing "Loading" forever.
-                if self.latestRequested != model, self.activeModel != model, self.status(of: model) == .loading {
-                    self.statuses[model] = .downloaded
+                if latestRequested != model, activeModel != model, status(of: model) == .loading {
+                    statuses[model] = .downloaded
                 }
                 return
             }
-            await self.performActivate(model)
+            await performActivate(model)
         }
     }
 

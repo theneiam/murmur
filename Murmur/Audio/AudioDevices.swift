@@ -1,5 +1,5 @@
-import Foundation
 import CoreAudio
+import Foundation
 
 struct AudioInputDevice: Identifiable, Hashable {
     let id: AudioDeviceID

@@ -1,5 +1,5 @@
-import XCTest
 @testable import Murmur
+import XCTest
 
 final class RecordingTests: XCTestCase {
     private let minimum: TimeInterval = 0.3

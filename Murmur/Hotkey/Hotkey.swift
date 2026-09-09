@@ -1,7 +1,7 @@
-import Foundation
-import CoreGraphics
 import Carbon
+import CoreGraphics
 import CoreServices
+import Foundation
 
 /// A push-to-talk hotkey. Two shapes are supported:
 ///
@@ -23,10 +23,10 @@ struct Hotkey: Codable, Equatable, Hashable {
     /// Generic, device-independent modifier bits.
     static let modifierMask: UInt64 =
         CGEventFlags.maskShift.rawValue
-        | CGEventFlags.maskControl.rawValue
-        | CGEventFlags.maskAlternate.rawValue
-        | CGEventFlags.maskCommand.rawValue
-        | CGEventFlags.maskSecondaryFn.rawValue
+            | CGEventFlags.maskControl.rawValue
+            | CGEventFlags.maskAlternate.rawValue
+            | CGEventFlags.maskCommand.rawValue
+            | CGEventFlags.maskSecondaryFn.rawValue
 
     /// Device-specific bits that tell left and right modifier keys apart
     /// (NX_DEVICEL*/NX_DEVICER* masks from IOKit).

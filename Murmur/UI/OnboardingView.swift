@@ -1,6 +1,6 @@
-import SwiftUI
 import AppKit
 import AVFoundation
+import SwiftUI
 
 /// Hosts the onboarding SwiftUI view in a regular window. Murmur is an
 /// accessory app, so the window is created manually and the app is activated

@@ -1,7 +1,7 @@
-import Foundation
-import AVFoundation
 import AudioToolbox
+import AVFoundation
 import CoreAudio
+import Foundation
 import os
 
 enum AudioRecorderError: LocalizedError {
@@ -184,12 +184,12 @@ final class AudioRecorder {
     private func armWatchdog(overrideDeviceID: AudioDeviceID?) {
         watchdog?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self, self.isRecording else { return }
-            self.lock.lock()
-            let received = self.buffersReceived
-            self.lock.unlock()
+            guard let self, isRecording else { return }
+            lock.lock()
+            let received = buffersReceived
+            lock.unlock()
             guard received == 0 else { return }
-            self.restartEngine(reason: "no audio within \(Self.firstBufferTimeout) s", overrideDeviceID: overrideDeviceID)
+            restartEngine(reason: "no audio within \(Self.firstBufferTimeout) s", overrideDeviceID: overrideDeviceID)
         }
         watchdog = work
         DispatchQueue.main.asyncAfter(deadline: .now() + Self.firstBufferTimeout, execute: work)
@@ -297,10 +297,10 @@ final class AudioRecorder {
 
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            self.onLevel?(level)
+            onLevel?(level)
             if reachedLimit {
-                let recording = self.stop()
-                self.onAutoStop?(recording)
+                let recording = stop()
+                onAutoStop?(recording)
             }
         }
     }

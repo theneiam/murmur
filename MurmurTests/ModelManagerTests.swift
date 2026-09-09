@@ -1,5 +1,5 @@
-import XCTest
 @testable import Murmur
+import XCTest
 
 /// In-memory engine: records load order and can be slowed down so the
 /// manager's queueing behaviour is observable.
@@ -60,7 +60,7 @@ final class ModelManagerTests: XCTestCase {
     func testFreshManagerSeesBundlesAsDownloadedButNotReady() {
         for model in WhisperModel.allCases {
             XCTAssertEqual(manager.status(of: model), .downloaded)
-            XCTAssertTrue(manager.isAvailable(model), "on disk means usable on demand")
+            XCTAssertEqual(manager.availability(of: model), .cold, "on disk means usable on demand")
         }
         XCTAssertFalse(manager.isReady)
         XCTAssertNil(manager.activeModel)
@@ -128,7 +128,7 @@ final class ModelManagerTests: XCTestCase {
         await manager.unloadForIdle()
         XCTAssertNil(manager.activeModel)
         XCTAssertEqual(manager.status(of: .small), .downloaded)
-        XCTAssertTrue(manager.isAvailable(.small))
+        XCTAssertEqual(manager.availability(of: .small), .cold)
         let unloads = await engine.unloadCount
         XCTAssertEqual(unloads, 1)
 
@@ -171,5 +171,25 @@ final class ModelManagerTests: XCTestCase {
     func testCancellingWhenNothingIsDownloadingIsHarmless() {
         manager.cancelDownload(.small)
         XCTAssertEqual(manager.status(of: .small), .downloaded)
+    }
+
+    func testAvailabilityFollowsTheLifecycle() async {
+        XCTAssertEqual(manager.availability(of: .small), .cold)
+        manager.activate(.small)
+        XCTAssertEqual(manager.availability(of: .small), .loading)
+        _ = await manager.awaitActivation()
+        XCTAssertEqual(manager.availability(of: .small), .warm)
+        XCTAssertEqual(manager.availability(of: .medium), .cold, "only the active model is warm")
+
+        await manager.delete(.small)
+        XCTAssertEqual(manager.availability(of: .small), .blocked(reason: "Choose and download a model in Settings"))
+    }
+
+    func testAwaitActivationOfReportsTheRequestedModelOnly() async {
+        manager.activate(.small)
+        let small = await manager.awaitActivation(of: .small)
+        let medium = await manager.awaitActivation(of: .medium)
+        XCTAssertTrue(small)
+        XCTAssertFalse(medium)
     }
 }

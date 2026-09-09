@@ -1,8 +1,8 @@
-import XCTest
 @testable import Murmur
+import XCTest
 
 final class StatusPanelTests: XCTestCase {
-    private let main = CGRect(x: 0, y: 0, width: 1728, height: 1085)      // visible frame, menu bar excluded
+    private let main = CGRect(x: 0, y: 0, width: 1728, height: 1085) // visible frame, menu bar excluded
     private let external = CGRect(x: 1728, y: 200, width: 3440, height: 1440)
     private let size = CGSize(width: 220, height: 44)
 
@@ -26,7 +26,7 @@ final class StatusPanelTests: XCTestCase {
     }
 
     func testSavedAnchorOffEveryScreenFallsBackToDefault() {
-        let saved = PanelAnchor(centerX: 3000, bottomY: 300)   // was on the external display
+        let saved = PanelAnchor(centerX: 3000, bottomY: 300) // was on the external display
         XCTAssertEqual(saved.resolved(panelSize: size, screens: [main], fallback: main), .default(for: main))
     }
 

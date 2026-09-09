@@ -1,5 +1,5 @@
-import Foundation
 import ApplicationServices
+import Foundation
 import os
 
 /// Inserts text into the focused text field of the frontmost app by writing

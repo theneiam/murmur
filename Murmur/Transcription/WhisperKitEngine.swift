@@ -1,6 +1,6 @@
 import Foundation
-import WhisperKit
 import os
+import WhisperKit
 
 /// Local Whisper inference through WhisperKit (CoreML, Apple Neural Engine +
 /// GPU). The loaded pipeline is kept in memory for the lifetime of the app so

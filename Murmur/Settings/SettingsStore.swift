@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 /// All user-configurable state, persisted to `UserDefaults` as JSON.
 @MainActor

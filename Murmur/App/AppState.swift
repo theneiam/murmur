@@ -1,6 +1,6 @@
-import Foundation
 import AppKit
 import Combine
+import Foundation
 import os
 
 /// The app's composition root: constructs the subsystems, wires the hotkey
@@ -136,7 +136,7 @@ final class AppState: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] trusted in
                 guard let self else { return }
-                if trusted { self.startHotkeyListener() } else { self.hotkeys.stop() }
+                if trusted { startHotkeyListener() } else { hotkeys.stop() }
             }
             .store(in: &cancellables)
     }
@@ -167,14 +167,13 @@ final class AppState: ObservableObject {
         if settings.showStatusPanel, phase == .idle { indicator.showIdle() }
     }
 
-    /// The selected model is warm, loading, or on disk and loadable on demand.
-    /// Recording never waits for the model; transcription does.
-    var isModelAvailable: Bool {
-        models.isAvailable(settings.model)
-    }
-
+    /// Everything a dictation needs right now: permissions, the hotkey
+    /// listener, and a model that is not blocked (warm, cold or loading all
+    /// work — recording never waits for the model, transcription does).
     var isReadyToDictate: Bool {
-        permissions.allGranted && hotkeys.isRunning && isModelAvailable
+        guard permissions.allGranted, hotkeys.isRunning else { return false }
+        if case .blocked = models.availability(of: settings.model) { return false }
+        return true
     }
 
     static let bluetoothHint = "You're dictating through a Bluetooth headset. Its microphone takes about a second to switch on, so the start of each dictation may be cut. For dictation the built-in microphone is usually better — Settings → Audio."
@@ -203,8 +202,8 @@ final class AppState: ObservableObject {
         guard minutes > 0 else { return }
         idleUnloadTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(minutes * 60))
-            guard let self, !Task.isCancelled, self.phase == .idle else { return }
-            await self.models.unloadForIdle()
+            guard let self, !Task.isCancelled, phase == .idle else { return }
+            await models.unloadForIdle()
         }
     }
 
@@ -213,19 +212,15 @@ final class AppState: ObservableObject {
         if !permissions.accessibility { return "Accessibility permission needed" }
         if permissions.microphone != .authorized { return "Microphone permission needed" }
         if let hotkeyError { return hotkeyError }
-        switch models.status(of: settings.model) {
-        case .notDownloaded: return "Model not downloaded"
-        case let .downloading(progress): return "Downloading model… \(Int(progress * 100))%"
-        case let .failed(message): return "Model error: \(message)"
-        case .ready, .downloaded, .loading: break
-        }
+        let availability = models.availability(of: settings.model)
+        if case let .blocked(reason) = availability { return reason }
         switch phase {
         case .idle:
             let base = "Hold \(settings.hotkey.displayString) to dictate"
-            switch models.status(of: settings.model) {
+            switch availability {
             case .loading: return base + " (model loading…)"
-            case .downloaded: return base + " (model loads on first use)"
-            default: return base
+            case .cold: return base + " (model loads on first use)"
+            case .warm, .blocked: return base
             }
         case .starting, .recording: return "Recording…"
         case .transcribing: return "Transcribing…"

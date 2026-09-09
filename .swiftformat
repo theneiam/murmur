@@ -1,0 +1,18 @@
+# SwiftFormat configuration — enforced by CI (`swiftformat --lint .`).
+# Conservative: matches the existing style rather than restyling the codebase.
+--swiftversion 5.10
+--indent 4
+--maxwidth none
+--wraparguments preserve
+--wrapparameters preserve
+--wrapcollections preserve
+--trailingcommas always
+--semicolons never
+--commas always
+--stripunusedargs closure-only
+# redundantSelf is disabled: os.Logger messages are autoclosures and need explicit self.
+--importgrouping alpha
+--header ignore
+--extensionacl on-declarations
+--disable wrapMultilineStatementBraces, andOperator, redundantType, preferKeyPath, blankLinesAtStartOfScope, enumNamespaces, opaqueGenericParameters, hoistTry, hoistAwait, redundantOptionalBinding, redundantClosure, sortDeclarations, blockComments, wrapIfStatementBodies, wrapPropertyBodies, wrapFunctionBodies, wrapLoopBodies, docComments, numberFormatting, noForceUnwrapInTests, conditionalAssignment, redundantSelf
+--exclude build, Murmur.xcodeproj, docs

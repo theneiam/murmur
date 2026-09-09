@@ -1,7 +1,7 @@
-import Foundation
-import AVFoundation
 import AppKit
 import ApplicationServices
+import AVFoundation
+import Foundation
 
 /// Tracks the two permissions Murmur needs and offers the right remediation
 /// for each state (request, or send the user to System Settings when denied).

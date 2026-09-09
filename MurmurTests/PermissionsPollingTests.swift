@@ -1,5 +1,5 @@
-import XCTest
 @testable import Murmur
+import XCTest
 
 @MainActor
 final class PermissionsPollingTests: XCTestCase {

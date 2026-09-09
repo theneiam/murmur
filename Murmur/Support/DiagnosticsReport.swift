@@ -29,7 +29,9 @@ enum DiagnosticsReport {
     @MainActor
     static func render(state: AppState) -> String {
         var out: [String] = []
-        func section(_ title: String) { out.append(""); out.append("== \(title) =="); }
+        func section(_ title: String) { out.append("")
+            out.append("== \(title) ==")
+        }
         func line(_ key: String, _ value: Any?) { out.append("\(key): \(value.map { "\($0)" } ?? "—")") }
 
         out.append("Murmur diagnostics report — contains no dictated text")
@@ -66,6 +68,7 @@ enum DiagnosticsReport {
         for model in WhisperModel.allCases {
             line(model.rawValue, "\(state.models.status(of: model))" + (state.models.activeModel == model ? " (active)" : ""))
         }
+        line("Selected model availability", "\(state.models.availability(of: settings.model))")
         line("Models folder", state.models.rootDirectory.path)
 
         section("Audio input devices")

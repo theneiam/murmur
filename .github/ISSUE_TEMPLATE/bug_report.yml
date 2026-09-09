@@ -1,0 +1,38 @@
+name: Bug report
+description: Something does not work as expected
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: target-app
+    attributes:
+      label: App you were dictating into
+      placeholder: e.g. Notes, Chrome (Gmail), VS Code, Terminal
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics report
+      description: In Murmur's menu choose **Help → Save Diagnostics Report…** and attach the file from your Desktop (drag it here). It contains versions, settings and Murmur's own log — no dictated text.
+  - type: input
+    id: versions
+    attributes:
+      label: Murmur and macOS versions
+      description: About Murmur shows the version; macOS from  → About This Mac.
+      placeholder: Murmur 1.1.0 (…) · macOS 15.6
+    validations:
+      required: true
+  - type: dropdown
+    id: microphone
+    attributes:
+      label: Microphone
+      options:
+        - Built-in
+        - Bluetooth headset (AirPods etc.)
+        - USB / other
+        - Not relevant

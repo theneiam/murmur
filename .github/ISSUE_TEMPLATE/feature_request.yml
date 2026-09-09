@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest an improvement
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation, not just the feature.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+  - type: markdown
+    attributes:
+      value: |
+        Note the settled constraints in CONTRIBUTING.md: push-to-talk only, no network at runtime, no telemetry, no editor of its own. Requests that cross them are welcome as design discussions but are unlikely to be implemented as described.

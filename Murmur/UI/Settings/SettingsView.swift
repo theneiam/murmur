@@ -1,5 +1,5 @@
-import SwiftUI
 import CoreAudio
+import SwiftUI
 
 struct SettingsView: View {
     var body: some View {
@@ -92,7 +92,7 @@ struct GeneralSettingsView: View {
 
             Section("Recording") {
                 HStack {
-                    Slider(value: $settings.maxRecordingSeconds, in: 15...180, step: 15)
+                    Slider(value: $settings.maxRecordingSeconds, in: 15 ... 180, step: 15)
                     Text("\(Int(settings.maxRecordingSeconds)) s")
                         .monospacedDigit()
                         .frame(width: 44, alignment: .trailing)

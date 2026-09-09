@@ -1,7 +1,7 @@
-import Foundation
 import ApplicationServices
-import CoreGraphics
 import Carbon.HIToolbox
+import CoreGraphics
+import Foundation
 import os
 
 enum HotkeyError: LocalizedError {
@@ -225,8 +225,8 @@ final class HotkeyManager: @unchecked Sendable {
         let thread = Thread { [self] in
             let mask: CGEventMask =
                 (1 << CGEventType.keyDown.rawValue)
-                | (1 << CGEventType.keyUp.rawValue)
-                | (1 << CGEventType.flagsChanged.rawValue)
+                    | (1 << CGEventType.keyUp.rawValue)
+                    | (1 << CGEventType.flagsChanged.rawValue)
             guard let tap = CGEvent.tapCreate(
                 tap: .cgSessionEventTap,
                 place: .headInsertEventTap,
@@ -262,7 +262,8 @@ final class HotkeyManager: @unchecked Sendable {
 
     func stop() {
         guard isRunning else { return }
-        if let tap = tapPort.withLock({ port -> CFMachPort? in defer { port = nil }; return port }) {
+        if let tap = tapPort.withLock({ port -> CFMachPort? in defer { port = nil }
+            return port }) {
             CGEvent.tapEnable(tap: tap, enable: false)
             CFMachPortInvalidate(tap)
         }
@@ -331,7 +332,7 @@ final class HotkeyManager: @unchecked Sendable {
         guard !events.isEmpty else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
-            for event in events { self.dispatch(event) }
+            for event in events { dispatch(event) }
         }
     }
 

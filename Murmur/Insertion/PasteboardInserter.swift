@@ -1,6 +1,6 @@
-import Foundation
 import AppKit
 import Carbon.HIToolbox
+import Foundation
 import os
 
 /// Fallback insertion: put the text on the general pasteboard, synthesise

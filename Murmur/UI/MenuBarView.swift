@@ -1,5 +1,5 @@
-import SwiftUI
 import AppKit
+import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject private var appState: AppState

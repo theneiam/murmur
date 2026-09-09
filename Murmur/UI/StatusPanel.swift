@@ -1,5 +1,5 @@
-import Foundation
 import CoreGraphics
+import Foundation
 
 /// Where the floating status panel sits, in screen coordinates: the
 /// horizontal centre and the bottom edge. Anchoring this way lets the pill

@@ -1,7 +1,7 @@
-import XCTest
 import Carbon.HIToolbox
 import CoreGraphics
 @testable import Murmur
+import XCTest
 
 final class TapStateTests: XCTestCase {
     private let rightOption: UInt64 = 0x0040

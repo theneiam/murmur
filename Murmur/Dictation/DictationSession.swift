@@ -108,16 +108,16 @@ final class DictationSession: ObservableObject {
         presenter.showMessage("Click into the app you want to test — inserting a sample in 3 s…", for: 3)
         Task { [weak self] in
             guard let self else { return }
-            try? await Task.sleep(for: self.sampleDelay)
-            guard self.phase == .idle else { return }
+            try? await Task.sleep(for: sampleDelay)
+            guard phase == .idle else { return }
             let sample = "Murmur insertion test at \(Date().formatted(date: .omitted, time: .standard)). "
             do {
-                let method = try await self.inserter.insert(sample, strategy: strategy)
-                self.lastInsertionMethod = method
-                self.log.info("Insertion test: \(method.rawValue, privacy: .public)")
-                self.presenter.showMessage("Inserted via \(method.displayName). Check that the text landed exactly once.", for: 5)
+                let method = try await inserter.insert(sample, strategy: strategy)
+                lastInsertionMethod = method
+                log.info("Insertion test: \(method.rawValue, privacy: .public)")
+                presenter.showMessage("Inserted via \(method.displayName). Check that the text landed exactly once.", for: 5)
             } catch {
-                self.presenter.showMessage(error.localizedDescription, for: 5)
+                presenter.showMessage(error.localizedDescription, for: 5)
             }
         }
     }
@@ -185,37 +185,37 @@ final class DictationSession: ObservableObject {
             guard let self else { return }
             do {
                 if !warm {
-                    guard await self.models.awaitActivation(of: cfg.model) else {
+                    guard await models.awaitActivation(of: cfg.model) else {
                         throw TranscriptionError.modelNotLoaded
                     }
-                    self.presenter.showWorking("Transcribing…")
+                    presenter.showWorking("Transcribing…")
                 }
-                let transcript = try await self.transcribe(recording.samples, language: cfg.language)
+                let transcript = try await transcribe(recording.samples, language: cfg.language)
                 let text = TextPostProcessor.process(transcript.text, options: cfg.postProcessing)
-                self.lastTranscript = text.trimmingCharacters(in: .whitespaces)
+                lastTranscript = text.trimmingCharacters(in: .whitespaces)
 
                 guard !text.isEmpty else {
-                    self.presenter.showMessage("Didn't catch that", for: 1.2)
-                    self.phase = .idle
-                    self.onEvent?(.noSpeech)
+                    presenter.showMessage("Didn't catch that", for: 1.2)
+                    phase = .idle
+                    onEvent?(.noSpeech)
                     return
                 }
 
-                self.phase = .inserting
-                self.presenter.hide()
-                let method = try await self.inserter.insert(text, strategy: cfg.insertionStrategy)
-                self.lastInsertionMethod = method
-                self.lastError = nil
-                self.log.info("Inserted \(text.count, privacy: .public) characters via \(method.rawValue, privacy: .public) (\(transcript.processingTime, privacy: .public) s)")
-                self.phase = .idle
-                self.onEvent?(.inserted(characters: text.count, method: method))
-                if recording.deviceIsBluetooth { self.onEvent?(.usedBluetoothInput) }
+                phase = .inserting
+                presenter.hide()
+                let method = try await inserter.insert(text, strategy: cfg.insertionStrategy)
+                lastInsertionMethod = method
+                lastError = nil
+                log.info("Inserted \(text.count, privacy: .public) characters via \(method.rawValue, privacy: .public) (\(transcript.processingTime, privacy: .public) s)")
+                phase = .idle
+                onEvent?(.inserted(characters: text.count, method: method))
+                if recording.deviceIsBluetooth { onEvent?(.usedBluetoothInput) }
             } catch {
-                self.lastError = error.localizedDescription
-                self.presenter.showMessage(error.localizedDescription, for: 3)
-                self.log.error("Dictation failed: \(error.localizedDescription, privacy: .public)")
-                self.phase = .idle
-                self.onEvent?(.failed(error.localizedDescription))
+                lastError = error.localizedDescription
+                presenter.showMessage(error.localizedDescription, for: 3)
+                log.error("Dictation failed: \(error.localizedDescription, privacy: .public)")
+                phase = .idle
+                onEvent?(.failed(error.localizedDescription))
             }
         }
     }

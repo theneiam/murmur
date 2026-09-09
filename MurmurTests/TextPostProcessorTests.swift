@@ -1,5 +1,5 @@
-import XCTest
 @testable import Murmur
+import XCTest
 
 final class TextPostProcessorTests: XCTestCase {
     private var options = PostProcessingOptions()
