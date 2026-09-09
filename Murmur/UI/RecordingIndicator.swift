@@ -42,6 +42,7 @@ struct IndicatorView: View {
                     .foregroundStyle(idle.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
                 Text("Murmur")
                     .font(.system(size: 13, weight: .semibold))
+                    .fixedSize()
                 if !idle.hint.isEmpty {
                     Text(idle.hint)
                         .font(.system(size: 12))
@@ -154,7 +155,7 @@ final class IndicatorWindowController {
         idle = newIdle
         if case .idle = model.state, isPersistent {
             model.state = .idle(idle)
-            if let panel { position(panel) }
+            present()
         }
     }
 
@@ -244,6 +245,12 @@ final class IndicatorWindowController {
         generation &+= 1
         let panel = panel ?? makePanel()
         position(panel)
+        // SwiftUI applies the new state asynchronously; measure once more
+        // after it has laid out so the pill fits its content exactly.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, let panel = self.panel, panel.isVisible else { return }
+            self.position(panel)
+        }
         if !panel.isVisible {
             panel.alphaValue = 0
             panel.orderFrontRegardless()
