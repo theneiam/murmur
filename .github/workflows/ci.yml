@@ -11,7 +11,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install SwiftFormat
         run: brew install swiftformat
       - name: swiftformat --lint
@@ -22,7 +22,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install XcodeGen
         run: brew install xcodegen
