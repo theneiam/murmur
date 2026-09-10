@@ -43,7 +43,10 @@ settings:
 packages:
   ArgmaxOSS:
     url: https://github.com/argmaxinc/argmax-oss-swift
-    from: "1.1.0"
+    # Exact pin on purpose: Package.resolved lives inside the git-ignored
+    # .xcodeproj, so this line is the only thing that makes builds
+    # reproducible across machines and CI. Bump deliberately.
+    exactVersion: "1.1.0"
 
 targets:
   Murmur:

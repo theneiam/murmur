@@ -50,6 +50,15 @@ warnings.
   would notice.
 - CI (build, tests, format lint) must be green.
 
+## Dependencies
+
+WhisperKit (`argmax-oss-swift`) is the only package, pinned to an exact
+version in `project.yml` because the resolved file is not tracked. To
+update: change `exactVersion`, run `xcodegen generate`, build, run a few
+dictations with each model, check the release notes for CoreML or model
+format changes, and mention the bump in `CHANGELOG.md`. Dependabot does not
+cover it (no `Package.swift`); it only watches GitHub Actions.
+
 ## Product constraints
 
 These are settled; PRs that change them will be discussed as design

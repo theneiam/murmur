@@ -1,10 +1,8 @@
+# Only GitHub Actions is covered: Dependabot's Swift updater needs a
+# Package.swift, and Murmur declares WhisperKit through XcodeGen (project.yml)
+# with an exact version. Bump it by hand — see CONTRIBUTING.md → Dependencies.
 version: 2
 updates:
-  - package-ecosystem: swift
-    directory: /
-    schedule:
-      interval: weekly
-    open-pull-requests-limit: 3
   - package-ecosystem: github-actions
     directory: /
     schedule:
