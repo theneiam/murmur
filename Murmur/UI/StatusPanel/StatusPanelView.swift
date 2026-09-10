@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// Murmur's brand colours, taken from the app icon (indigo → violet). Used
+/// as accents on glyphs only; the pill itself stays frosted so it sits
+/// quietly on any desktop.
+enum MurmurBrand {
+    static let indigo = Color(red: 86 / 255, green: 111 / 255, blue: 255 / 255)
+    static let violet = Color(red: 122 / 255, green: 63 / 255, blue: 224 / 255)
+    static let gradient = LinearGradient(colors: [indigo, violet], startPoint: .topLeading, endPoint: .bottomTrailing)
+}
+
 /// Observable state behind `StatusPanelView`. Written only by `StatusPanel`.
 @MainActor
 final class StatusPanelModel: ObservableObject {
@@ -31,7 +40,7 @@ struct StatusPanelView: View {
             case let .idle(idle):
                 Image(systemName: idle.isWarning ? "exclamationmark.triangle.fill" : "mic.fill")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(idle.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
+                    .foregroundStyle(idle.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(MurmurBrand.gradient))
                 Text("Murmur")
                     .font(.system(size: 13, weight: .semibold))
                     .fixedSize()
@@ -56,6 +65,7 @@ struct StatusPanelView: View {
             case let .working(label):
                 ProgressView()
                     .controlSize(.small)
+                    .tint(MurmurBrand.indigo)
                 Text(label)
                     .font(.system(size: 13, weight: .medium))
             case let .message(text, _):
@@ -87,17 +97,22 @@ struct StatusPanelView: View {
     }
 }
 
+/// Level bars painted with the brand gradient across the whole strip (the
+/// gradient is masked by the bars rather than applied per bar, so it flows
+/// left to right instead of repeating on every capsule).
 private struct Waveform: View {
     let levels: [Float]
 
     var body: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(levels.indices, id: \.self) { i in
-                Capsule()
-                    .fill(Color.accentColor)
-                    .frame(width: 3, height: max(3, CGFloat(levels[i]) * 22))
-            }
-        }
-        .animation(.linear(duration: 0.05), value: levels)
+        MurmurBrand.gradient
+            .mask(
+                HStack(alignment: .center, spacing: 2) {
+                    ForEach(levels.indices, id: \.self) { i in
+                        Capsule()
+                            .frame(width: 3, height: max(3, CGFloat(levels[i]) * 22))
+                    }
+                }
+                .animation(.linear(duration: 0.05), value: levels)
+            )
     }
 }
