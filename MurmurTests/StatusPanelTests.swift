@@ -68,4 +68,20 @@ final class StatusPanelTests: XCTestCase {
         XCTAssertNil(store.statusPanelAnchor)
         defaults.removePersistentDomain(forName: suite)
     }
+
+    // MARK: Resting state
+
+    func testAfterATransientStateThePanelRestsOnIdleOnlyInPersistentMode() {
+        let idle = StatusPanelIdle(hint: "", isWarning: false)
+        XCTAssertEqual(PanelState.resting(mode: .persistent, idle: idle), .idle(idle))
+        XCTAssertEqual(PanelState.resting(mode: .transient, idle: idle), .hidden)
+    }
+
+    func testIdleOrHiddenClassification() {
+        XCTAssertTrue(PanelState.hidden.isIdleOrHidden)
+        XCTAssertTrue(PanelState.idle(StatusPanelIdle(hint: "", isWarning: false)).isIdleOrHidden)
+        XCTAssertFalse(PanelState.recording.isIdleOrHidden)
+        XCTAssertFalse(PanelState.working("Transcribing…").isIdleOrHidden)
+        XCTAssertFalse(PanelState.message("x", duration: 1).isIdleOrHidden)
+    }
 }

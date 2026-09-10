@@ -95,9 +95,9 @@ struct MenuBarView: View {
     private func saveDiagnostics() {
         do {
             let url = try DiagnosticsReport.generate(state: appState)
-            appState.indicator.showMessage("Diagnostics saved to \(url.lastPathComponent) on the Desktop.", for: 4)
+            appState.statusPanel.showMessage("Diagnostics saved to \(url.lastPathComponent) on the Desktop.", for: 4)
         } catch {
-            appState.indicator.showMessage("Could not save diagnostics: \(error.localizedDescription)", for: 4)
+            appState.statusPanel.showMessage("Could not save diagnostics: \(error.localizedDescription)", for: 4)
         }
     }
 }

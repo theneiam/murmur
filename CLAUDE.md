@@ -28,7 +28,7 @@ Quit any running Murmur before launching a new build — two instances would bot
 - WhisperKit lives in the renamed package `argmax-oss-swift` (product `WhisperKit`; `import WhisperKit` re-exports `ArgmaxCore`). Do **not** add the `ArgmaxOSS` umbrella product — it pulls in TTSKit, which requires macOS 15.
 - WhisperKit model naming trap: OpenAI's large-v3-*turbo* checkpoint is `openai_whisper-large-v3-v20240930[_626MB]`. The `_turbo` suffix on other variants means an encoder compute optimisation, not the turbo model.
 - Model files: `~/Library/Application Support/Murmur/Models/models/argmaxinc/whisperkit-coreml/<variant>/`. The tokenizer is fetched from `openai/whisper-*` on the first load of each model and cached under `Models/tokenizers/`; after that everything is offline. First load of a model also triggers CoreML/ANE compilation (seconds for Small, minutes for larger).
-- Swift 5.10 language mode, `SWIFT_STRICT_CONCURRENCY=minimal`. Closures handed to AppKit completion handlers are `@Sendable` — use `MainActor.assumeIsolated { }` inside them rather than touching main-actor state directly (see `RecordingIndicator.hide`).
+- Swift 5.10 language mode, `SWIFT_STRICT_CONCURRENCY=minimal`. Closures handed to AppKit completion handlers are `@Sendable` — use `MainActor.assumeIsolated { }` inside them rather than touching main-actor state directly (see `StatusPanel.orderOut`).
 - `UCKeyTranslate` takes plain `Int` lengths in Swift; `UniCharCount` is not exposed.
 - Settings are JSON blobs in UserDefaults (`murmur.*` keys). Any struct stored there needs a tolerant `init(from:)` with `decodeIfPresent` (see `PostProcessingOptions`) so adding a field never wipes a user's settings.
 
@@ -44,7 +44,7 @@ Quit any running Murmur before launching a new build — two instances would bot
 | Speech | `Transcription/*` | `WhisperModel`/`TranscriptionLanguage` catalog, `TranscriptionEngine` protocol, `WhisperKitEngine` actor (one warm pipeline), `ModelManager` (download/load/status) |
 | Insertion | `Insertion/*` | `TextInserter` strategy switch → `AccessibilityInserter` (AX selected-text write + verification) or `PasteboardInserter` (⌘V + clipboard snapshot/restore) |
 | Text | `PostProcessing/TextPostProcessor.swift` | Capitalisation, filler stripping, replacement dictionary, trailing space |
-| UI | `UI/RecordingIndicator.swift`, `UI/StatusPanel.swift`, `UI/MenuBarView.swift`, `UI/OnboardingView.swift`, `UI/Settings/SettingsView.swift` | Floating non-activating NSPanel (transient, or persistent "status panel" mode: idle state, draggable, `PanelAnchor` saved in settings); menu; first-run permissions + model download; 5-tab settings |
+| UI | `UI/StatusPanel/*` (`StatusPanel`, `StatusPanelView`, `PanelState`), `UI/MenuBarView.swift`, `UI/OnboardingView.swift`, `UI/Settings/SettingsView.swift` | The floating pill: one `render(PanelState)` interface, `mode` transient/persistent, `idle` content, `PanelAnchor` saved in settings; it is the `DictationPresenting` adapter. Menu; first-run permissions + model download; 5-tab settings |
 | Support | `Permissions/`, `Settings/SettingsStore.swift`, `Support/LaunchAtLogin.swift`, `Support/AboutPanel.swift`, `Support/SupportLinks.swift`, `Support/DiagnosticsReport.swift` | Mic/AX permission polling, persisted settings, `SMAppService`, About panel with credits, outbound URLs, diagnostics file (OSLogStore of the current process, last hour) |
 
 ## Product constraints (don't drift)

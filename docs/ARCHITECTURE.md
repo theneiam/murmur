@@ -34,7 +34,7 @@ Everything the user sees during that flow goes through `DictationPresenting`
 | Speech | `Transcription/*` | `TranscriptionEngine` (actor, WhisperKit), `ModelManager` (download, load, `ModelAvailability`, idle unload), `WhisperModel` catalog. |
 | Insertion | `Insertion/*` | `TextInserting`; strategy switch over the AX writer and the pasteboard writer. |
 | Text | `PostProcessing/TextPostProcessor.swift` | Pure function `process(text, options)`. |
-| UI | `UI/*` | Indicator / status panel (`RecordingIndicator.swift`, `StatusPanel.swift`), menu, onboarding, settings tabs. |
+| UI | `UI/*` | Status panel (`UI/StatusPanel/`: `render(PanelState)`, transient/persistent mode, remembered anchor), menu, onboarding, settings tabs. |
 | Support | `Support/*`, `Permissions/`, `Settings/` | Settings store (JSON in UserDefaults), permission polling, About, links, diagnostics, sounds, launch at login. |
 
 ## Seams and what varies across them
@@ -45,7 +45,7 @@ Everything the user sees during that flow goes through `DictationPresenting`
 | `ModelProviding` | `ModelManager` | `FakeModels` + `ScriptedEngine` |
 | `TranscriptionEngine` | `WhisperKitEngine` | `FakeEngine`, `ScriptedEngine` |
 | `TextInserting` | `DefaultTextInserter` | `FakeInserter` |
-| `DictationPresenting` | `IndicatorWindowController` | `FakePresenter` |
+| `DictationPresenting` | `StatusPanel` | `FakePresenter` |
 
 Rule of thumb: pipeline behaviour goes in `DictationSession` with a test in
 `DictationSessionTests`; hardware, OS and window quirks go in the adapter.

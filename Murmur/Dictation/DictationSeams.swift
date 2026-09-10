@@ -72,10 +72,6 @@ protocol DictationPresenting: AnyObject {
     func playCue(_ cue: SoundCue)
 }
 
-extension IndicatorWindowController: DictationPresenting {
-    func playCue(_ cue: SoundCue) { Sounds.play(cue) }
-}
-
 // MARK: Configuration & events
 
 /// Everything a single dictation needs from settings and permissions,

@@ -47,3 +47,35 @@ struct StatusPanelIdle: Equatable {
             : StatusPanelIdle(hint: statusText, isWarning: true)
     }
 }
+
+/// Transient: the panel appears for a dictation and fades out afterwards.
+/// Persistent: the "status panel" setting — it stays on screen, shows an
+/// idle state between dictations, can be dragged and remembers its spot.
+enum PanelMode: Equatable {
+    case transient
+    case persistent
+}
+
+/// Everything the panel can show. `StatusPanel.render` is the only way in.
+enum PanelState: Equatable {
+    case hidden
+    case idle(StatusPanelIdle)
+    case recording
+    /// Spinner with a label: "Transcribing…", "Loading model…".
+    case working(String)
+    /// Auto-dismisses after `duration`, then resolves to `resting`.
+    case message(String, duration: TimeInterval)
+
+    /// What the panel shows when nothing is happening: the idle status in
+    /// persistent mode, nothing at all in transient mode.
+    static func resting(mode: PanelMode, idle: StatusPanelIdle) -> PanelState {
+        mode == .persistent ? .idle(idle) : .hidden
+    }
+
+    var isIdleOrHidden: Bool {
+        switch self {
+        case .idle, .hidden: return true
+        case .recording, .working, .message: return false
+        }
+    }
+}

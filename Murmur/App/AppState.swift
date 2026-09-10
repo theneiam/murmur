@@ -21,7 +21,7 @@ final class AppState: ObservableObject {
     let models: ModelManager
     let hotkeys: HotkeyManager
     let recorder: AudioRecorder
-    let indicator: IndicatorWindowController
+    let statusPanel: StatusPanel
     let session: DictationSession
 
     // Forwarded from the session so views observing only AppState keep working.
@@ -40,14 +40,14 @@ final class AppState: ObservableObject {
         models = ModelManager()
         hotkeys = HotkeyManager(hotkey: settings.hotkey)
         recorder = AudioRecorder()
-        indicator = IndicatorWindowController()
+        statusPanel = StatusPanel()
 
         let settings = settings, permissions = permissions
         session = DictationSession(
             recorder: recorder,
             models: models,
             inserter: DefaultTextInserter(),
-            presenter: indicator,
+            presenter: statusPanel,
             config: {
                 DictationConfig(
                     model: settings.model,
@@ -115,18 +115,24 @@ final class AppState: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
 
-        indicator.onAnchorChange = { [weak self] anchor in self?.settings.statusPanelAnchor = anchor }
+        statusPanel.onAnchorChange = { [weak self] anchor in self?.settings.statusPanelAnchor = anchor }
 
-        // Status panel: idle content depends on permissions, model state,
-        // hotkey and phase. objectWillChange fires *before* the change, so
-        // coalesce briefly and read the new values afterwards.
+        // Status panel: its mode and idle content derive from exactly these
+        // published values. `@Published` emits from `willSet`, so hop to the
+        // next main-queue turn and read the settled values; no debounce.
         Publishers.MergeMany(
-            models.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
-            permissions.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
-            settings.objectWillChange.map { _ in () }.eraseToAnyPublisher(),
+            permissions.$accessibility.map { _ in () }.eraseToAnyPublisher(),
+            permissions.$microphone.map { _ in () }.eraseToAnyPublisher(),
+            models.$statuses.map { _ in () }.eraseToAnyPublisher(),
+            models.$activeModel.map { _ in () }.eraseToAnyPublisher(),
+            settings.$hotkey.map { _ in () }.eraseToAnyPublisher(),
+            settings.$model.map { _ in () }.eraseToAnyPublisher(),
+            settings.$showStatusPanel.map { _ in () }.eraseToAnyPublisher(),
+            settings.$statusPanelAnchor.map { _ in () }.eraseToAnyPublisher(),
+            $hotkeyError.map { _ in () }.eraseToAnyPublisher(),
             session.$phase.map { _ in () }.eraseToAnyPublisher()
         )
-        .debounce(for: .milliseconds(50), scheduler: DispatchQueue.main)
+        .receive(on: DispatchQueue.main)
         .sink { [weak self] in self?.refreshStatusPanel() }
         .store(in: &cancellables)
 
@@ -158,13 +164,12 @@ final class AppState: ObservableObject {
 
     // MARK: Status panel
 
-    /// Pushes the current idle content and the on/off setting to the
-    /// indicator. Cheap and idempotent; called on every relevant change.
+    /// Pushes the mode, anchor and idle content to the status panel. Cheap
+    /// and idempotent: the panel re-renders only when a value changed.
     private func refreshStatusPanel() {
-        indicator.anchor = settings.statusPanelAnchor
-        indicator.setIdle(StatusPanelIdle.make(isReady: isReadyToDictate, statusText: statusText))
-        indicator.isPersistent = settings.showStatusPanel
-        if settings.showStatusPanel, phase == .idle { indicator.showIdle() }
+        statusPanel.anchor = settings.statusPanelAnchor
+        statusPanel.idle = StatusPanelIdle.make(isReady: isReadyToDictate, statusText: statusText)
+        statusPanel.mode = settings.showStatusPanel ? .persistent : .transient
     }
 
     /// Everything a dictation needs right now: permissions, the hotkey
@@ -185,7 +190,7 @@ final class AppState: ObservableObject {
         case .usedBluetoothInput:
             guard !settings.hasShownBluetoothHint else { return }
             settings.hasShownBluetoothHint = true
-            indicator.showMessage(Self.bluetoothHint, for: 7)
+            statusPanel.showMessage(Self.bluetoothHint, for: 7)
         case .inserted, .noSpeech, .failed:
             break
         }

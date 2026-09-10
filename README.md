@@ -57,7 +57,7 @@ murmur/
     ├── Settings/SettingsStore.swift    # UserDefaults-backed ObservableObject
     ├── Support/LaunchAtLogin.swift     # SMAppService
     ├── UI/
-    │   ├── RecordingIndicator.swift    # floating NSPanel + SwiftUI waveform
+    │   ├── StatusPanel/                # floating pill: StatusPanel (window), StatusPanelView, PanelState
     │   ├── MenuBarView.swift
     │   ├── OnboardingView.swift        # first-run permissions + model download
     │   └── Settings/SettingsView.swift # General / Hotkey / Audio / Model / Text tabs
