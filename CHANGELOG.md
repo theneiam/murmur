@@ -5,6 +5,8 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.1.2] - 2026-09-10
+
 ### Changed
 - Status panel is one module (`UI/StatusPanel/`) with a single `render(PanelState)` interface; AppState refreshes it from published values instead of a debounced merge. No user-visible change.
 - Text insertion: the strategy switch is a tested `StrategyInserter` over two `TextWriting` adapters; the synthetic-event tag moved to `SyntheticEvents`. No user-visible change.
@@ -34,7 +36,8 @@ via Accessibility with a clipboard-restoring paste fallback; Small, Medium and
 Large v3 Turbo models; About panel, diagnostics report, idle model unload,
 signed and notarized DMG.
 
-[Unreleased]: https://github.com/theneiam/murmur/compare/v1.1.1...HEAD
+[Unreleased]: https://github.com/theneiam/murmur/compare/v1.1.2...HEAD
+[1.1.2]: https://github.com/theneiam/murmur/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/theneiam/murmur/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/theneiam/murmur/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/theneiam/murmur/releases/tag/v1.0.0
