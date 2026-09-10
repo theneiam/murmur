@@ -19,10 +19,7 @@ final class OnboardingWindowController: NSObject, NSWindowDelegate {
 
         if window == nil {
             let view = OnboardingView(onFinish: { [weak self] in self?.close() })
-                .environmentObject(state)
-                .environmentObject(state.settings)
-                .environmentObject(state.models)
-                .environmentObject(state.permissions)
+                .murmurEnvironment(state)
 
             let window = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 520, height: 560),

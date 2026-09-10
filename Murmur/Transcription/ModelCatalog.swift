@@ -70,10 +70,6 @@ enum WhisperModel: String, CaseIterable, Codable, Identifiable {
         case .largeV3Turbo: return "First load: ~1–3 min"
         }
     }
-
-    /// Whisper's multilingual checkpoints; `.en` variants are intentionally
-    /// excluded because Russian support is a requirement.
-    var isMultilingual: Bool { true }
 }
 
 /// Languages exposed in the UI. `whisperCode` is the ISO 639-1 code Whisper

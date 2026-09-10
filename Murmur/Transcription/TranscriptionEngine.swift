@@ -2,8 +2,6 @@ import Foundation
 
 struct Transcript {
     let text: String
-    /// ISO 639-1 code reported by the model (useful when auto-detecting).
-    let language: String?
     let processingTime: TimeInterval
 }
 

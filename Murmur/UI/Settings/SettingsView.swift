@@ -1,4 +1,5 @@
 import CoreAudio
+import ServiceManagement
 import SwiftUI
 
 struct SettingsView: View {
@@ -26,7 +27,10 @@ struct GeneralSettingsView: View {
     @EnvironmentObject private var appState: AppState
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var permissions: PermissionsManager
-    @State private var launchAtLogin = LaunchAtLogin.isEnabled
+    @State private var launchAtLogin = Self.launchAtLoginEnabled
+
+    /// Launch-at-login via `SMAppService` (macOS 13+); no helper bundle needed.
+    private static var launchAtLoginEnabled: Bool { SMAppService.mainApp.status == .enabled }
     @State private var launchAtLoginError: String?
     @State private var revertingLaunchToggle = false
 
@@ -41,24 +45,24 @@ struct GeneralSettingsView: View {
                             revertingLaunchToggle = false
                             return
                         }
-                        guard enabled != LaunchAtLogin.isEnabled else { return }
+                        guard enabled != Self.launchAtLoginEnabled else { return }
                         do {
-                            try LaunchAtLogin.setEnabled(enabled)
+                            if enabled { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
                             launchAtLoginError = nil
                         } catch {
                             launchAtLoginError = error.localizedDescription
                             revertingLaunchToggle = true
-                            launchAtLogin = LaunchAtLogin.isEnabled
+                            launchAtLogin = Self.launchAtLoginEnabled
                         }
                     }
                 if let launchAtLoginError {
                     Text(launchAtLoginError).font(.caption).foregroundStyle(.red)
                 }
-                if LaunchAtLogin.requiresApproval {
+                if SMAppService.mainApp.status == .requiresApproval {
                     HStack {
                         Text("Approval needed in System Settings → General → Login Items.")
                             .font(.caption).foregroundStyle(.secondary)
-                        Button("Open") { LaunchAtLogin.openLoginItemsSettings() }
+                        Button("Open") { SMAppService.openSystemSettingsLoginItems() }
                     }
                 }
                 Toggle("Play start/stop sounds", isOn: $settings.playSounds)
@@ -113,7 +117,7 @@ struct GeneralSettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear {
-            launchAtLogin = LaunchAtLogin.isEnabled
+            launchAtLogin = Self.launchAtLoginEnabled
             permissions.refresh()
         }
     }

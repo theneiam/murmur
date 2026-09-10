@@ -12,7 +12,7 @@ actor WhisperKitEngine: TranscriptionEngine {
     /// awaiting `WhisperKit(config)`, so a load that finishes after a newer
     /// load or unload began must not install its pipeline over theirs.
     private var generation = 0
-    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "whisper")
+    private let log = Logger.murmur("whisper")
 
     var loadedModel: WhisperModel? { model }
 
@@ -90,7 +90,7 @@ actor WhisperKitEngine: TranscriptionEngine {
                 .joined(separator: " ")
             let elapsed = Date().timeIntervalSince(started)
             log.info("Transcribed \(samples.count / 16_000, privacy: .public) s of audio in \(elapsed, privacy: .public) s")
-            return Transcript(text: text, language: results.first?.language, processingTime: elapsed)
+            return Transcript(text: text, processingTime: elapsed)
         } catch {
             throw TranscriptionError.failed(underlying: error)
         }

@@ -50,14 +50,6 @@ protocol TextInserting: AnyObject {
     func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionMethod
 }
 
-/// Production adapter over the strategy switch in `TextInserter`.
-@MainActor
-final class DefaultTextInserter: TextInserting {
-    func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionMethod {
-        try await TextInserter.insert(text, strategy: strategy)
-    }
-}
-
 // MARK: Presentation
 
 enum SoundCue { case start, stop }

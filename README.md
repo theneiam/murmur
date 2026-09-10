@@ -49,13 +49,13 @@ murmur/
     │   ├── WhisperKitEngine.swift      # WhisperKit implementation (warm pipeline)
     │   └── ModelManager.swift          # download / load / status per model
     ├── Insertion/
-    │   ├── TextInserter.swift          # strategy switch
+    │   ├── TextInserter.swift          # StrategyInserter over two TextWriting adapters
     │   ├── AccessibilityInserter.swift # AXUIElement kAXSelectedText write + verification
     │   └── PasteboardInserter.swift    # ⌘V with clipboard snapshot/restore
     ├── PostProcessing/TextPostProcessor.swift
     ├── Permissions/PermissionsManager.swift
     ├── Settings/SettingsStore.swift    # UserDefaults-backed ObservableObject
-    ├── Support/LaunchAtLogin.swift     # SMAppService
+    ├── Support/                        # About panel, links, diagnostics, logger, sounds
     ├── UI/
     │   ├── StatusPanel/                # floating pill: StatusPanel (window), StatusPanelView, PanelState
     │   ├── MenuBarView.swift

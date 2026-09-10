@@ -43,7 +43,7 @@ actor ScriptedEngine: TranscriptionEngine {
         transcribeCalls += 1
         if delay > .zero { try await Task.sleep(for: delay) }
         if let error { throw error }
-        return Transcript(text: text, language: language.whisperCode, processingTime: 0.1)
+        return Transcript(text: text, processingTime: 0.1)
     }
 }
 

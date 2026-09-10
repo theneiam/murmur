@@ -25,7 +25,7 @@ actor FakeEngine: TranscriptionEngine {
     }
 
     func transcribe(samples: [Float], language: TranscriptionLanguage) async throws -> Transcript {
-        Transcript(text: "hello", language: language.whisperCode, processingTime: 0)
+        Transcript(text: "hello", processingTime: 0)
     }
 }
 

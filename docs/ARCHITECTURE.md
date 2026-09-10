@@ -32,7 +32,7 @@ Everything the user sees during that flow goes through `DictationPresenting`
 | Hotkey | `Hotkey/Hotkey.swift`, `Hotkey/HotkeyManager.swift` | `Hotkey` value + matching rules; `HotkeyManager` runs the CGEvent tap on its own thread, `TapState` is the pure state machine, callbacks arrive on main. |
 | Audio | `Audio/AudioRecorder.swift`, `Audio/AudioDevices.swift` | `AudioCapturing`: start/stop, level + auto-stop callbacks, `Recording`. Handles Bluetooth profile switches (engine restart) internally. |
 | Speech | `Transcription/*` | `TranscriptionEngine` (actor, WhisperKit), `ModelManager` (download, load, `ModelAvailability`, idle unload), `WhisperModel` catalog. |
-| Insertion | `Insertion/*` | `TextInserting`; strategy switch over the AX writer and the pasteboard writer. |
+| Insertion | `Insertion/*` | `StrategyInserter` (`TextInserting`) composes two `TextWriting` adapters: Accessibility (verified) and pasteboard (⌘V, clipboard restored). |
 | Text | `PostProcessing/TextPostProcessor.swift` | Pure function `process(text, options)`. |
 | UI | `UI/*` | Status panel (`UI/StatusPanel/`: `render(PanelState)`, transient/persistent mode, remembered anchor), menu, onboarding, settings tabs. |
 | Support | `Support/*`, `Permissions/`, `Settings/` | Settings store (JSON in UserDefaults), permission polling, About, links, diagnostics, sounds, launch at login. |
@@ -44,7 +44,7 @@ Everything the user sees during that flow goes through `DictationPresenting`
 | `AudioCapturing` | `AudioRecorder` (AVAudioEngine) | `FakeRecorder` |
 | `ModelProviding` | `ModelManager` | `FakeModels` + `ScriptedEngine` |
 | `TranscriptionEngine` | `WhisperKitEngine` | `FakeEngine`, `ScriptedEngine` |
-| `TextInserting` | `DefaultTextInserter` | `FakeInserter` |
+| `TextInserting` | `StrategyInserter` over `AccessibilityWriter` + `PasteboardWriter` (`TextWriting`) | `FakeInserter`; `StrategyInserter` itself is tested with fake writers |
 | `DictationPresenting` | `StatusPanel` | `FakePresenter` |
 
 Rule of thumb: pipeline behaviour goes in `DictationSession` with a test in

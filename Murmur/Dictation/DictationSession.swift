@@ -36,7 +36,7 @@ final class DictationSession: ObservableObject {
     private let transcriptionTimeout: Duration
     private let minimumUtterance: TimeInterval
     private let sampleDelay: Duration
-    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "dictation")
+    private let log = Logger.murmur("dictation")
 
     /// Configuration captured at `press()`; valid until the phase returns to idle.
     private var current: DictationConfig?
@@ -105,7 +105,7 @@ final class DictationSession: ObservableObject {
     func insertSample() {
         guard phase == .idle else { return }
         let strategy = config().insertionStrategy
-        presenter.showMessage("Click into the app you want to test — inserting a sample in 3 s…", for: 3)
+        presenter.showMessage("Click into the app you want to test — inserting a sample in 3 s…", for: MessageDuration.error)
         Task { [weak self] in
             guard let self else { return }
             try? await Task.sleep(for: sampleDelay)
@@ -115,9 +115,9 @@ final class DictationSession: ObservableObject {
                 let method = try await inserter.insert(sample, strategy: strategy)
                 lastInsertionMethod = method
                 log.info("Insertion test: \(method.rawValue, privacy: .public)")
-                presenter.showMessage("Inserted via \(method.displayName). Check that the text landed exactly once.", for: 5)
+                presenter.showMessage("Inserted via \(method.displayName). Check that the text landed exactly once.", for: MessageDuration.guidance)
             } catch {
-                presenter.showMessage(error.localizedDescription, for: 5)
+                presenter.showMessage(error.localizedDescription, for: MessageDuration.guidance)
             }
         }
     }
@@ -131,7 +131,7 @@ final class DictationSession: ObservableObject {
 
         guard cfg.microphoneAuthorized else {
             phase = .idle
-            presenter.showMessage("Microphone access is required", for: 2.5)
+            presenter.showMessage("Microphone access is required", for: MessageDuration.short)
             return
         }
         // Recording does not need the model. If it is on disk but cold
@@ -144,7 +144,7 @@ final class DictationSession: ObservableObject {
             models.activate(cfg.model)
         case let .blocked(reason):
             phase = .idle
-            presenter.showMessage(reason, for: 4)
+            presenter.showMessage(reason, for: MessageDuration.actionable)
             return
         }
 
@@ -156,7 +156,7 @@ final class DictationSession: ObservableObject {
         } catch {
             phase = .idle
             lastError = error.localizedDescription
-            presenter.showMessage(error.localizedDescription, for: 2.5)
+            presenter.showMessage(error.localizedDescription, for: MessageDuration.short)
         }
     }
 
@@ -169,7 +169,7 @@ final class DictationSession: ObservableObject {
             if recording.isSilentCaptureFailure(minimumUtterance: minimumUtterance) {
                 let message = recording.silentCaptureFailureMessage
                 lastError = message
-                presenter.showMessage(message, for: 5)
+                presenter.showMessage(message, for: MessageDuration.guidance)
                 onEvent?(.failed(message))
             } else {
                 presenter.hide()
@@ -195,7 +195,7 @@ final class DictationSession: ObservableObject {
                 lastTranscript = text.trimmingCharacters(in: .whitespaces)
 
                 guard !text.isEmpty else {
-                    presenter.showMessage("Didn't catch that", for: 1.2)
+                    presenter.showMessage("Didn't catch that", for: MessageDuration.glance)
                     phase = .idle
                     onEvent?(.noSpeech)
                     return
@@ -212,7 +212,7 @@ final class DictationSession: ObservableObject {
                 if recording.deviceIsBluetooth { onEvent?(.usedBluetoothInput) }
             } catch {
                 lastError = error.localizedDescription
-                presenter.showMessage(error.localizedDescription, for: 3)
+                presenter.showMessage(error.localizedDescription, for: MessageDuration.error)
                 log.error("Dictation failed: \(error.localizedDescription, privacy: .public)")
                 phase = .idle
                 onEvent?(.failed(error.localizedDescription))

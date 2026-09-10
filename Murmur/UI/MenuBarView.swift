@@ -74,14 +74,14 @@ struct MenuBarView: View {
 
         // User-initiated only: opens the releases page in the browser. Murmur
         // never checks for updates on its own.
-        Button("Check for Updates…") { SupportLinks.open(SupportLinks.latestRelease) }
+        Button("Check for Updates…") { NSWorkspace.shared.open(SupportLinks.latestRelease) }
 
         Menu("Help") {
-            Button("Report a Problem…") { SupportLinks.open(SupportLinks.newIssue) }
+            Button("Report a Problem…") { NSWorkspace.shared.open(SupportLinks.newIssue) }
             Button("Save Diagnostics Report…") { saveDiagnostics() }
             Divider()
-            Button("Privacy Statement") { SupportLinks.open(SupportLinks.privacyPolicy) }
-            Button("Website") { SupportLinks.open(SupportLinks.website) }
+            Button("Privacy Statement") { NSWorkspace.shared.open(SupportLinks.privacyPolicy) }
+            Button("Website") { NSWorkspace.shared.open(SupportLinks.website) }
         }
 
         Divider()
@@ -95,9 +95,9 @@ struct MenuBarView: View {
     private func saveDiagnostics() {
         do {
             let url = try DiagnosticsReport.generate(state: appState)
-            appState.statusPanel.showMessage("Diagnostics saved to \(url.lastPathComponent) on the Desktop.", for: 4)
+            appState.statusPanel.showMessage("Diagnostics saved to \(url.lastPathComponent) on the Desktop.", for: MessageDuration.actionable)
         } catch {
-            appState.statusPanel.showMessage("Could not save diagnostics: \(error.localizedDescription)", for: 4)
+            appState.statusPanel.showMessage("Could not save diagnostics: \(error.localizedDescription)", for: MessageDuration.actionable)
         }
     }
 }

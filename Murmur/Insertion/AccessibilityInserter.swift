@@ -12,7 +12,7 @@ import os
 /// custom editors do not. The result is verified after writing so that the
 /// caller can fall back to the pasteboard when an app silently ignores it.
 struct AccessibilityInserter {
-    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "ax-insert")
+    private static let log = Logger.murmur("ax-insert")
 
     /// Returns `true` only when the text was verifiably inserted.
     static func insert(_ text: String) -> Bool {

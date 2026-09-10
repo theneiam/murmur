@@ -56,6 +56,22 @@ enum PanelMode: Equatable {
     case persistent
 }
 
+/// How long a message stays up before the panel returns to rest.
+enum MessageDuration {
+    /// "Didn't catch that" — acknowledged at a glance.
+    static let glance: TimeInterval = 1.2
+    /// Simple, self-explanatory notices.
+    static let short: TimeInterval = 2.5
+    /// Error text the user may want to read.
+    static let error: TimeInterval = 3
+    /// Something the user must act on (permission, model).
+    static let actionable: TimeInterval = 4
+    /// Multi-sentence guidance.
+    static let guidance: TimeInterval = 5
+    /// One-time hints.
+    static let hint: TimeInterval = 7
+}
+
 /// Everything the panel can show. `StatusPanel.render` is the only way in.
 enum PanelState: Equatable {
     case hidden

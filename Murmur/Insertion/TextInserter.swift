@@ -54,39 +54,73 @@ enum InsertionError: LocalizedError {
     }
 }
 
-/// Picks the insertion path according to the configured strategy.
+/// One way of getting text into the focused app. Two adapters exist:
+/// `AccessibilityWriter` (AX selected-text write, verified) and
+/// `PasteboardWriter` (⌘V with clipboard restore, always "succeeds").
 @MainActor
-enum TextInserter {
-    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "insert")
+protocol TextWriting: AnyObject {
+    /// `true` only when the text was verifiably delivered.
+    func write(_ text: String) async -> Bool
+}
+
+@MainActor
+final class AccessibilityWriter: TextWriting {
+    /// Every AX call is synchronous IPC into the target app (up to 0.5 s each
+    /// with our timeout), so run them off the main thread. The AX API is
+    /// thread-safe and does not need a run loop for one-shot calls.
+    func write(_ text: String) async -> Bool {
+        await Task.detached(priority: .userInitiated) {
+            AccessibilityInserter.insert(text)
+        }.value
+    }
+}
+
+@MainActor
+final class PasteboardWriter: TextWriting {
+    func write(_ text: String) async -> Bool {
+        await PasteboardInserter.insert(text)
+        return true
+    }
+}
+
+/// The `TextInserting` adapter used by the app: applies the configured
+/// strategy over an Accessibility writer and a pasteboard writer. Pure
+/// decision logic — tested with fake writers in `StrategyInserterTests`.
+@MainActor
+final class StrategyInserter: TextInserting {
+    private let accessibility: any TextWriting
+    private let pasteboard: any TextWriting
+    private let log = Logger.murmur("insert")
+
+    init(accessibility: any TextWriting, pasteboard: any TextWriting) {
+        self.accessibility = accessibility
+        self.pasteboard = pasteboard
+    }
+
+    /// The production wiring.
+    static func live() -> StrategyInserter {
+        StrategyInserter(accessibility: AccessibilityWriter(), pasteboard: PasteboardWriter())
+    }
 
     @discardableResult
-    static func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionMethod {
+    func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionMethod {
         guard !text.isEmpty else { return .accessibility }
 
         switch strategy {
         case .accessibilityThenPasteboard:
-            if await insertViaAccessibility(text) {
+            if await accessibility.write(text) {
                 log.debug("Inserted via Accessibility")
                 return .accessibility
             }
             log.debug("Accessibility declined; pasting")
-            await PasteboardInserter.insert(text)
+            _ = await pasteboard.write(text)
             return .pasteboard
         case .accessibilityOnly:
-            guard await insertViaAccessibility(text) else { throw InsertionError.accessibilityRejected }
+            guard await accessibility.write(text) else { throw InsertionError.accessibilityRejected }
             return .accessibility
         case .pasteboardOnly:
-            await PasteboardInserter.insert(text)
+            _ = await pasteboard.write(text)
             return .pasteboard
         }
-    }
-
-    /// Every AX call is synchronous IPC into the target app (up to 0.5 s each
-    /// with our timeout), so run them off the main thread. The AX API is
-    /// thread-safe and does not need a run loop for one-shot calls.
-    private static func insertViaAccessibility(_ text: String) async -> Bool {
-        await Task.detached(priority: .userInitiated) {
-            AccessibilityInserter.insert(text)
-        }.value
     }
 }

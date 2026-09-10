@@ -186,10 +186,6 @@ struct TapState: Equatable {
 ///
 /// All methods and properties are main-thread only unless noted.
 final class HotkeyManager: @unchecked Sendable {
-    /// Marker placed in `eventSourceUserData` on events Murmur posts itself
-    /// (the ⌘V used by the pasteboard inserter) so the tap ignores them.
-    nonisolated static let syntheticEventTag: Int64 = 0x4D75726D // "Murm"
-
     var hotkey: Hotkey {
         get { state.withLock { $0.hotkey } }
         set { deliver(state.withLock { $0.setHotkey(newValue) }) }
@@ -208,7 +204,7 @@ final class HotkeyManager: @unchecked Sendable {
     private var thread: Thread?
     private var tapRunLoop: CFRunLoop?
     private var captureCompletion: ((Hotkey?) -> Void)?
-    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "hotkey")
+    private let log = Logger.murmur("hotkey")
 
     init(hotkey: Hotkey) {
         state = OSAllocatedUnfairLock(initialState: TapState(hotkey: hotkey))
@@ -315,7 +311,7 @@ final class HotkeyManager: @unchecked Sendable {
             return false
         }
 
-        if event.getIntegerValueField(.eventSourceUserData) == Self.syntheticEventTag {
+        if event.getIntegerValueField(.eventSourceUserData) == SyntheticEvents.tag {
             return false
         }
 

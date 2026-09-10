@@ -69,10 +69,6 @@ enum AudioDevices {
         return transport == kAudioDeviceTransportTypeBluetooth || transport == kAudioDeviceTransportTypeBluetoothLE
     }
 
-    static var defaultInputIsBluetooth: Bool {
-        defaultInputDeviceID().map(isBluetooth) ?? false
-    }
-
     // MARK: Helpers
 
     private static func inputChannelCount(of id: AudioDeviceID) -> Int {

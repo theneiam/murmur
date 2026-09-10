@@ -1,4 +1,4 @@
-import AppKit
+import Foundation
 
 /// Every outbound link in one place. Murmur makes no network requests on its
 /// own; these are opened in the browser only when the user clicks them.
@@ -10,9 +10,4 @@ enum SupportLinks {
     static let latestRelease = repository.appending(path: "releases/latest")
     static let newIssue = repository.appending(path: "issues/new")
     static let privacyPolicy = repository.appending(path: "blob/main/PRIVACY.md")
-
-    @MainActor
-    static func open(_ url: URL) {
-        NSWorkspace.shared.open(url)
-    }
 }

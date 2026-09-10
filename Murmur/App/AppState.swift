@@ -30,7 +30,7 @@ final class AppState: ObservableObject {
     var lastError: String? { session.lastError }
     var lastInsertionMethod: InsertionMethod? { session.lastInsertionMethod }
 
-    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "app")
+    private let log = Logger.murmur("app")
     private var cancellables: Set<AnyCancellable> = []
     private var idleUnloadTask: Task<Void, Never>?
 
@@ -46,7 +46,7 @@ final class AppState: ObservableObject {
         session = DictationSession(
             recorder: recorder,
             models: models,
-            inserter: DefaultTextInserter(),
+            inserter: StrategyInserter.live(),
             presenter: statusPanel,
             config: {
                 DictationConfig(
@@ -190,7 +190,7 @@ final class AppState: ObservableObject {
         case .usedBluetoothInput:
             guard !settings.hasShownBluetoothHint else { return }
             settings.hasShownBluetoothHint = true
-            statusPanel.showMessage(Self.bluetoothHint, for: 7)
+            statusPanel.showMessage(Self.bluetoothHint, for: MessageDuration.hint)
         case .inserted, .noSpeech, .failed:
             break
         }

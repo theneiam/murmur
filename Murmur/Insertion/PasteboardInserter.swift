@@ -8,7 +8,7 @@ import os
 /// before. Works with virtually every app, at the cost of briefly touching
 /// the clipboard.
 enum PasteboardInserter {
-    private static let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "paste-insert")
+    private static let log = Logger.murmur("paste-insert")
 
     /// How long to wait after ⌘V before restoring the clipboard. Apps read the
     /// pasteboard synchronously while handling the key event, so this only
@@ -60,7 +60,7 @@ enum PasteboardInserter {
         }
         for event in [down, up] {
             event.flags = .maskCommand
-            event.setIntegerValueField(.eventSourceUserData, value: HotkeyManager.syntheticEventTag)
+            event.setIntegerValueField(.eventSourceUserData, value: SyntheticEvents.tag)
         }
         down.post(tap: .cgSessionEventTap)
         up.post(tap: .cgSessionEventTap)

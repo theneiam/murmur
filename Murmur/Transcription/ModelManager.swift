@@ -32,7 +32,7 @@ final class ModelManager: ObservableObject {
     let engine: any TranscriptionEngine
     let rootDirectory: URL
 
-    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "models")
+    private let log = Logger.murmur("models")
     private var loadTask: Task<Void, Never>?
     /// Bumped on every `activate`; a queued load whose generation is stale
     /// (the user picked yet another model meanwhile) is skipped.

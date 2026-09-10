@@ -5,6 +5,11 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Status panel is one module (`UI/StatusPanel/`) with a single `render(PanelState)` interface; AppState refreshes it from published values instead of a debounced merge. No user-visible change.
+- Text insertion: the strategy switch is a tested `StrategyInserter` over two `TextWriting` adapters; the synthetic-event tag moved to `SyntheticEvents`. No user-visible change.
+- Removed pass-through code (LaunchAtLogin wrapper, unused members), consolidated the logger factory, environment injection and message durations.
+
 ## [1.1.1] - 2026-09-09
 
 ### Changed

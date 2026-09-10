@@ -80,7 +80,7 @@ final class AudioRecorder {
     /// Called on the main thread when the maximum duration is reached.
     var onAutoStop: ((Recording) -> Void)?
 
-    private let log = Logger(subsystem: Bundle.main.bundleIdentifier ?? "murmur", category: "audio")
+    private let log = Logger.murmur("audio")
     private let lock = NSLock()
 
     private var engine: AVAudioEngine?

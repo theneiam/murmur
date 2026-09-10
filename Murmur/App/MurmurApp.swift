@@ -9,10 +9,7 @@ struct MurmurApp: App {
     var body: some Scene {
         MenuBarExtra {
             MenuBarView()
-                .environmentObject(appState)
-                .environmentObject(appState.settings)
-                .environmentObject(appState.models)
-                .environmentObject(appState.permissions)
+                .murmurEnvironment(appState)
         } label: {
             MenuBarIcon()
                 .environmentObject(appState)
@@ -21,11 +18,19 @@ struct MurmurApp: App {
 
         Settings {
             SettingsView()
-                .environmentObject(appState)
-                .environmentObject(appState.settings)
-                .environmentObject(appState.models)
-                .environmentObject(appState.permissions)
+                .murmurEnvironment(appState)
         }
+    }
+}
+
+extension View {
+    /// Injects the app state and the three child objects views observe
+    /// directly (settings, models, permissions).
+    func murmurEnvironment(_ state: AppState) -> some View {
+        environmentObject(state)
+            .environmentObject(state.settings)
+            .environmentObject(state.models)
+            .environmentObject(state.permissions)
     }
 }
 
