@@ -33,6 +33,7 @@ struct GeneralSettingsView: View {
     private static var launchAtLoginEnabled: Bool { SMAppService.mainApp.status == .enabled }
     @State private var launchAtLoginError: String?
     @State private var revertingLaunchToggle = false
+    @State private var confirmingReset = false
 
     var body: some View {
         Form {
@@ -104,6 +105,34 @@ struct GeneralSettingsView: View {
                 Text("Recording stops and transcribes automatically after this long, even if the key is still held.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("Statistics") {
+                Toggle("Collect usage statistics", isOn: $settings.collectStatistics)
+                Text("Counts words, dictations and timing per day, on this Mac only. Never stores what you said. Shown in the menu and under Statistics….")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("Your typing speed")
+                    Spacer()
+                    TextField("", value: $settings.typingWordsPerMinute, format: .number.precision(.fractionLength(0)))
+                        .frame(width: 56)
+                        .multilineTextAlignment(.trailing)
+                        .onChange(of: settings.typingWordsPerMinute) { _, value in
+                            let clamped = min(150, max(10, value))
+                            if clamped != value { settings.typingWordsPerMinute = clamped }
+                        }
+                    Text("words per minute").foregroundStyle(.secondary)
+                }
+                Text("Used only to estimate the typing time dictation saved you.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Reset Statistics…") { confirmingReset = true }
+                    .confirmationDialog("Delete all statistics?", isPresented: $confirmingReset) {
+                        Button("Delete", role: .destructive) { appState.stats.reset() }
+                    } message: {
+                        Text("Daily counts and streaks will be erased. This cannot be undone.")
+                    }
             }
 
             Section("Permissions") {

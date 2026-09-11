@@ -168,7 +168,14 @@ final class DictationSessionTests: XCTestCase {
         XCTAssertEqual(session.lastTranscript, "Hello world")
         XCTAssertEqual(session.lastInsertionMethod, .accessibility)
         XCTAssertNil(session.lastError)
-        XCTAssertEqual(events, [.inserted(characters: 12, method: .accessibility)])
+        XCTAssertEqual(events.count, 1)
+        guard case let .inserted(outcome) = events[0] else { return XCTFail("expected .inserted, got \(events)") }
+        XCTAssertEqual(outcome.characters, 12)
+        XCTAssertEqual(outcome.words, 2)
+        XCTAssertEqual(outcome.method, .accessibility)
+        XCTAssertEqual(outcome.model, .small)
+        XCTAssertEqual(outcome.recordedSeconds, 1.0, accuracy: 0.001)
+        XCTAssertEqual(outcome.transcriptionSeconds, 0.1, accuracy: 0.001)
         XCTAssertEqual(presenter.calls, ["recording", "cue:start", "cue:stop", "working:Transcribing…", "hide"])
     }
 
@@ -295,7 +302,9 @@ final class DictationSessionTests: XCTestCase {
     func testBluetoothInputEmitsAnEventAfterInsertion() async {
         recorder.nextRecording = Recording(samples: Self.oneSecond.samples, wallClockDuration: 1, deviceName: "AirPods", deviceIsBluetooth: true)
         await dictate()
-        XCTAssertEqual(events, [.inserted(characters: 12, method: .accessibility), .usedBluetoothInput])
+        XCTAssertEqual(events.count, 2)
+        guard case .inserted = events[0] else { return XCTFail("expected .inserted first, got \(events)") }
+        XCTAssertEqual(events[1], .usedBluetoothInput)
     }
 
     // MARK: Failures after recording

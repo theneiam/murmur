@@ -31,6 +31,7 @@ extension View {
             .environmentObject(state.settings)
             .environmentObject(state.models)
             .environmentObject(state.permissions)
+            .environmentObject(state.stats)
     }
 }
 
@@ -55,7 +56,6 @@ private struct MenuBarIcon: View {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    private var onboarding: OnboardingWindowController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // LSUIElement in Info.plist already hides the Dock icon; this is a
@@ -76,7 +76,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let needsOnboarding = !state.settings.hasCompletedOnboarding
             || !state.permissions.allGranted
         if needsOnboarding {
-            showOnboarding()
+            state.showOnboarding()
         }
     }
 
@@ -84,10 +84,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    func showOnboarding() {
-        if onboarding == nil {
-            onboarding = OnboardingWindowController()
-        }
-        onboarding?.show()
+    func applicationWillTerminate(_ notification: Notification) {
+        AppState.shared.stats.flush()
     }
 }

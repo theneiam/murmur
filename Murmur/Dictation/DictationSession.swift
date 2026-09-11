@@ -208,7 +208,15 @@ final class DictationSession: ObservableObject {
                 lastError = nil
                 log.info("Inserted \(text.count, privacy: .public) characters via \(method.rawValue, privacy: .public) (\(transcript.processingTime, privacy: .public) s)")
                 phase = .idle
-                onEvent?(.inserted(characters: text.count, method: method))
+                onEvent?(.inserted(DictationOutcome(
+                    timestamp: Date(),
+                    characters: text.count,
+                    words: DictationOutcome.wordCount(of: text),
+                    recordedSeconds: recording.duration,
+                    transcriptionSeconds: transcript.processingTime,
+                    method: method,
+                    model: cfg.model
+                )))
                 if recording.deviceIsBluetooth { onEvent?(.usedBluetoothInput) }
             } catch {
                 lastError = error.localizedDescription

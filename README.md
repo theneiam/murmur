@@ -10,6 +10,7 @@ Hold a key, speak, release. The audio is transcribed on-device with Whisper (via
 - Small / Medium / Large-v3-Turbo models, English + Russian (+ a few more) with auto-detect. The model stays warm in memory.
 - Text goes in through the Accessibility API (clipboard untouched); falls back to ⌘V with clipboard restore.
 - Floating indicator with a live level meter while recording and a "Transcribing…" state until the text lands. Optionally (*Settings → General → Show floating status panel*, off by default) it stays on screen as a small draggable status pill showing that Murmur is running.
+- Local statistics: words, dictations, speaking time and typing time saved per day, streaks, busiest hour — a one-line summary in the menu and a *Statistics…* window. Text-free, on this Mac only, off switch and reset in Settings.
 - The model stays warm in memory while you dictate and is dropped after an idle period (30 min by default, configurable); the reload happens while you speak.
 - 2-minute cap per recording (configurable 15 s – 3 min).
 

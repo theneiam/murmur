@@ -5,6 +5,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Local statistics: a *Today* line in the menu and a *Statistics…* window with words, dictations, speaking time, typing time saved, a seven-day chart, streaks and busiest hour/day. Stored text-free on this Mac only; on by default, with an off switch and reset in Settings → General.
+
 ## [1.1.2] - 2026-09-10
 
 ### Changed

@@ -71,6 +71,15 @@ enum DiagnosticsReport {
         line("Selected model availability", "\(state.models.availability(of: settings.model))")
         line("Models folder", state.models.rootDirectory.path)
 
+        section("Statistics")
+        let summary = state.statsSummary
+        line("Collecting", settings.collectStatistics)
+        line("All-time words / dictations", "\(summary.allTime.words) / \(summary.allTime.dictations)")
+        line("All-time speaking time (s)", Int(summary.allTime.recordedSeconds))
+        line("Current / longest streak (days)", "\(summary.currentStreak) / \(summary.longestStreak)")
+        line("Average transcription (s)", String(format: "%.2f", summary.averageTranscriptionSeconds))
+        line("Days recorded", state.stats.days.count)
+
         section("Audio input devices")
         let defaultID = AudioDevices.defaultInputDeviceID()
         for device in AudioDevices.inputDevices() {

@@ -28,6 +28,15 @@ rules) in the app's preferences, and downloaded models under
 kept in memory until the next dictation or quit, so you can copy it from the
 menu if insertion failed; it is not persisted.
 
+**Usage statistics.** Murmur keeps a small local file,
+`~/Library/Application Support/Murmur/Statistics.json`, with one row per
+day: how many dictations, words and characters, seconds of speech and
+transcription time, and counts per hour and weekday. It never contains
+what you said, which app you dictated into, or which microphone you used.
+It powers the *Today* line in the menu and the *Statistics…* window. It is
+on by default because it is text-free and never leaves the Mac; turn it off
+or erase it in Settings → General → Statistics.
+
 **Diagnostics reports.** *Help → Save Diagnostics Report…* writes a text file
 to your Desktop containing versions, settings, permission and device state
 and the last hour of Murmur's own log. Murmur never logs dictated text, so

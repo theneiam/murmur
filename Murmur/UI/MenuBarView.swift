@@ -26,6 +26,14 @@ struct MenuBarView: View {
             }
         }
 
+        if settings.collectStatistics {
+            let today = appState.statsSummary.today
+            Text(today.dictations == 0
+                ? "Today: nothing yet"
+                : "Today: \(today.words) words · \(today.dictations) \(today.dictations == 1 ? "dictation" : "dictations")")
+                .foregroundStyle(.secondary)
+        }
+
         Divider()
 
         Menu("Model: \(settings.model.displayName)") {
@@ -59,9 +67,7 @@ struct MenuBarView: View {
         Divider()
 
         if !permissions.allGranted {
-            Button("Fix Permissions…") {
-                (NSApp.delegate as? AppDelegate)?.showOnboarding()
-            }
+            Button("Fix Permissions…") { appState.showOnboarding() }
         }
 
         Button("Settings…") {
@@ -69,6 +75,10 @@ struct MenuBarView: View {
             openSettings()
         }
         .keyboardShortcut(",", modifiers: .command)
+
+        if settings.collectStatistics {
+            Button("Statistics…") { appState.showStatistics() }
+        }
 
         Button("About Murmur") { AboutPanel.show() }
 

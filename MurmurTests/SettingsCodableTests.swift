@@ -57,6 +57,8 @@ final class SettingsCodableTests: XCTestCase {
         XCTAssertNil(store.inputDeviceUID)
         XCTAssertTrue(store.playSounds)
         XCTAssertEqual(store.unloadAfterIdleMinutes, 30)
+        XCTAssertTrue(store.collectStatistics)
+        XCTAssertEqual(store.typingWordsPerMinute, 40)
         XCTAssertFalse(store.hasCompletedOnboarding)
     }
 

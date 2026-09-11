@@ -22,11 +22,16 @@ final class SettingsStore: ObservableObject {
     @Published var showStatusPanel: Bool { didSet { save(showStatusPanel, key: .showStatusPanel) } }
     /// Where the user last dragged the status panel; `nil` = default spot.
     @Published var statusPanelAnchor: PanelAnchor? { didSet { save(statusPanelAnchor, key: .statusPanelAnchor) } }
+    /// Keep local, text-free usage statistics (words, dictations, timing per day).
+    @Published var collectStatistics: Bool { didSet { save(collectStatistics, key: .collectStatistics) } }
+    /// Used only for the "time saved" estimate.
+    @Published var typingWordsPerMinute: Double { didSet { save(typingWordsPerMinute, key: .typingWordsPerMinute) } }
 
     private enum Key: String {
         case hotkey, inputDeviceUID, model, language, insertionStrategy
         case postProcessing, maxRecordingSeconds, playSounds, hasCompletedOnboarding
         case unloadAfterIdleMinutes, hasShownBluetoothHint, showStatusPanel, statusPanelAnchor
+        case collectStatistics, typingWordsPerMinute
         var storageKey: String { "murmur.\(rawValue)" }
     }
 
@@ -47,6 +52,8 @@ final class SettingsStore: ObservableObject {
         hasShownBluetoothHint = Self.load(Bool.self, key: .hasShownBluetoothHint, from: defaults) ?? false
         showStatusPanel = Self.load(Bool.self, key: .showStatusPanel, from: defaults) ?? false
         statusPanelAnchor = Self.load(PanelAnchor?.self, key: .statusPanelAnchor, from: defaults) ?? nil
+        collectStatistics = Self.load(Bool.self, key: .collectStatistics, from: defaults) ?? true
+        typingWordsPerMinute = Self.load(Double.self, key: .typingWordsPerMinute, from: defaults) ?? 40
     }
 
     // MARK: Persistence

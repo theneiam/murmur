@@ -83,7 +83,7 @@ struct DictationConfig: Equatable {
 /// One-off outcomes the app may want to react to (log, hint, metrics-free
 /// bookkeeping). Continuous state is on the session's published properties.
 enum DictationEvent: Equatable {
-    case inserted(characters: Int, method: InsertionMethod)
+    case inserted(DictationOutcome)
     case noSpeech
     case failed(String)
     /// The recording came from a Bluetooth headset (fires after `inserted`).

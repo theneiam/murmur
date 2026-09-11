@@ -22,6 +22,7 @@ final class AppState: ObservableObject {
     let hotkeys: HotkeyManager
     let recorder: AudioRecorder
     let statusPanel: StatusPanel
+    let stats: StatsStore
     let session: DictationSession
 
     // Forwarded from the session so views observing only AppState keep working.
@@ -31,6 +32,8 @@ final class AppState: ObservableObject {
     var lastInsertionMethod: InsertionMethod? { session.lastInsertionMethod }
 
     private let log = Logger.murmur("app")
+    private var onboardingWindow: OnboardingWindowController?
+    private var statisticsWindow: StatsWindowController?
     private var cancellables: Set<AnyCancellable> = []
     private var idleUnloadTask: Task<Void, Never>?
 
@@ -41,6 +44,8 @@ final class AppState: ObservableObject {
         hotkeys = HotkeyManager(hotkey: settings.hotkey)
         recorder = AudioRecorder()
         statusPanel = StatusPanel()
+        stats = StatsStore()
+        stats.isEnabled = settings.collectStatistics
 
         let settings = settings, permissions = permissions
         session = DictationSession(
@@ -67,6 +72,13 @@ final class AppState: ObservableObject {
         hotkeys.onCancel = { [weak self] in self?.session.cancel() }
 
         session.onEvent = { [weak self] event in self?.handle(event) }
+        settings.$collectStatistics
+            .removeDuplicates()
+            .sink { [weak self] enabled in self?.stats.isEnabled = enabled }
+            .store(in: &cancellables)
+        stats.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
         session.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -183,6 +195,29 @@ final class AppState: ObservableObject {
 
     static let bluetoothHint = "You're dictating through a Bluetooth headset. Its microphone takes about a second to switch on, so the start of each dictation may be cut. For dictation the built-in microphone is usually better — Settings → Audio."
 
+    // MARK: Windows
+
+    //
+    // Opened from here, never via `NSApp.delegate as? AppDelegate`: under
+    // `@NSApplicationDelegateAdaptor`, `NSApp.delegate` is SwiftUI's private
+    // wrapper (also called `AppDelegate`), so that cast is always nil and the
+    // menu action silently does nothing.
+
+    func showOnboarding() {
+        if onboardingWindow == nil { onboardingWindow = OnboardingWindowController() }
+        onboardingWindow?.show()
+    }
+
+    func showStatistics() {
+        if statisticsWindow == nil { statisticsWindow = StatsWindowController() }
+        statisticsWindow?.show()
+    }
+
+    /// Current statistics, for the menu and the Statistics window.
+    var statsSummary: StatsSummary {
+        StatsSummary.make(days: stats.days, calendar: .current, now: Date())
+    }
+
     // MARK: Dictation events
 
     private func handle(_ event: DictationEvent) {
@@ -191,7 +226,9 @@ final class AppState: ObservableObject {
             guard !settings.hasShownBluetoothHint else { return }
             settings.hasShownBluetoothHint = true
             statusPanel.showMessage(Self.bluetoothHint, for: MessageDuration.hint)
-        case .inserted, .noSpeech, .failed:
+        case let .inserted(outcome):
+            stats.record(outcome)
+        case .noSpeech, .failed:
             break
         }
     }
