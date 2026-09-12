@@ -5,8 +5,14 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-12
+
 ### Added
 - Local statistics: a *Today* line in the menu and a *Statistics…* window with words, dictations, speaking time, typing time saved, a seven-day chart, streaks and busiest hour/day. Stored text-free on this Mac only; on by default, with an off switch and reset in Settings → General.
+- Status panel: brand indigo–violet accents on the mic glyph, waveform and spinner.
+
+### Fixed
+- The *Fix Permissions…* menu item did nothing (it reached the app delegate through a cast that is always nil under SwiftUI); window opening now goes through the composition root.
 
 ## [1.1.2] - 2026-09-10
 
@@ -39,7 +45,8 @@ via Accessibility with a clipboard-restoring paste fallback; Small, Medium and
 Large v3 Turbo models; About panel, diagnostics report, idle model unload,
 signed and notarized DMG.
 
-[Unreleased]: https://github.com/theneiam/murmur/compare/v1.1.2...HEAD
+[Unreleased]: https://github.com/theneiam/murmur/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/theneiam/murmur/compare/v1.1.2...v1.2.0
 [1.1.2]: https://github.com/theneiam/murmur/compare/v1.1.1...v1.1.2
 [1.1.1]: https://github.com/theneiam/murmur/compare/v1.1.0...v1.1.1
 [1.1.0]: https://github.com/theneiam/murmur/compare/v1.0.0...v1.1.0
