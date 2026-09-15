@@ -28,7 +28,7 @@ enum InsertionStrategy: String, CaseIterable, Codable, Identifiable {
         case .accessibilityOnly:
             return "Never touches the clipboard. Some apps (terminals, a few editors) will not receive text."
         case .pasteboardOnly:
-            return "Works everywhere. Your previous clipboard contents are restored right after the paste."
+            return "Sends ⌘V to the intended app. Murmur reports the paste event, but cannot verify that every app accepted it; your previous clipboard contents are restored when safe."
         }
     }
 }
@@ -46,81 +46,106 @@ enum InsertionMethod: String {
     }
 }
 
-enum InsertionError: LocalizedError {
-    case accessibilityRejected
-
+enum InsertionError: LocalizedError, Equatable {
+    case accessibilityRejected, pasteRejected, destinationChanged, destinationUnavailable
     var errorDescription: String? {
-        "The focused app did not accept text via Accessibility. Switch the insertion method to \"fall back to paste\" in Settings."
+        switch self {
+        case .accessibilityRejected: return "The focused app did not accept text via Accessibility. Try the paste fallback in Settings."
+        case .pasteRejected: return "The paste could not be sent. Copy the last transcript from Murmur's menu."
+        case .destinationChanged: return "The destination changed. Nothing more was inserted. Return to your text field and use Paste Last Transcript."
+        case .destinationUnavailable: return "Click into a text field in another app first. Your last transcript is available in Murmur's menu."
+        }
     }
 }
 
-/// One way of getting text into the focused app. Two adapters exist:
-/// `AccessibilityWriter` (AX selected-text write, verified) and
-/// `PasteboardWriter` (⌘V with clipboard restore, always "succeeds").
+enum DeliveryStatus: String, Codable { case verified, unverified }
+
+enum TextWriteResult { case rejected, verified, unverified }
+
+struct InsertionResult: Equatable {
+    var method: InsertionMethod
+    var delivery: DeliveryStatus
+    /// Exact text offered to the destination, after its layout policy.
+    var text: String
+
+    var summary: String {
+        delivery == .verified ? "Inserted via \(method.displayName)" : "Sent via \(method.displayName); delivery unverified"
+    }
+}
+
 @MainActor
 protocol TextWriting: AnyObject {
-    /// `true` only when the text was verifiably delivered.
-    func write(_ text: String) async -> Bool
+    func write(_ text: String, to destination: InsertionDestination?) async -> TextWriteResult
 }
 
 @MainActor
 final class AccessibilityWriter: TextWriting {
-    /// Every AX call is synchronous IPC into the target app (up to 0.5 s each
-    /// with our timeout), so run them off the main thread. The AX API is
-    /// thread-safe and does not need a run loop for one-shot calls.
-    func write(_ text: String) async -> Bool {
-        await Task.detached(priority: .userInitiated) {
-            AccessibilityInserter.insert(text)
+    func write(_ text: String, to destination: InsertionDestination?) async -> TextWriteResult {
+        guard let destination, FrontmostDestination().matches(destination) else { return .rejected }
+        return await Task.detached(priority: .userInitiated) {
+            AccessibilityInserter.insert(text, into: destination)
         }.value
     }
 }
 
 @MainActor
 final class PasteboardWriter: TextWriting {
-    func write(_ text: String) async -> Bool {
-        await PasteboardInserter.insert(text)
-        return true
+    func write(_ text: String, to destination: InsertionDestination?) async -> TextWriteResult {
+        guard let destination else { return .rejected }
+        let sent = await PasteboardInserter.insert(text) { FrontmostDestination().matches(destination) }
+        return sent ? .unverified : .rejected
     }
 }
 
-/// The `TextInserting` adapter used by the app: applies the configured
-/// strategy over an Accessibility writer and a pasteboard writer. Pure
-/// decision logic — tested with fake writers in `StrategyInserterTests`.
+/// Resolves delivery and fallback without ever treating a successful OS call
+/// as proof of delivery. An ambiguous AX write is not pasted a second time.
 @MainActor
 final class StrategyInserter: TextInserting {
     private let accessibility: any TextWriting
     private let pasteboard: any TextWriting
-    private let log = Logger.murmur("insert")
+    private let destinations: (any DestinationChecking)?
 
-    init(accessibility: any TextWriting, pasteboard: any TextWriting) {
+    init(accessibility: any TextWriting, pasteboard: any TextWriting, destinations: (any DestinationChecking)? = nil) {
         self.accessibility = accessibility
         self.pasteboard = pasteboard
+        self.destinations = destinations
     }
 
-    /// The production wiring.
     static func live() -> StrategyInserter {
-        StrategyInserter(accessibility: AccessibilityWriter(), pasteboard: PasteboardWriter())
+        StrategyInserter(accessibility: AccessibilityWriter(), pasteboard: PasteboardWriter(), destinations: FrontmostDestination())
     }
 
-    @discardableResult
-    func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionMethod {
-        guard !text.isEmpty else { return .accessibility }
+    func captureDestination() -> InsertionDestination? { destinations?.capture() }
 
-        switch strategy {
-        case .accessibilityThenPasteboard:
-            if await accessibility.write(text) {
-                log.debug("Inserted via Accessibility")
-                return .accessibility
+    func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionResult {
+        try await insert(text, strategy: strategy, destination: captureDestination())
+    }
+
+    func insert(_ input: String, strategy: InsertionStrategy, destination: InsertionDestination?) async throws -> InsertionResult {
+        guard !input.isEmpty else { return InsertionResult(method: .accessibility, delivery: .verified, text: "") }
+        try validate(destination)
+        let text = destination.map { LayoutPolicy.adapt(input, for: $0.layoutTarget) } ?? input
+        if strategy != .pasteboardOnly {
+            let result = await accessibility.write(text, to: destination)
+            switch result {
+            case .verified: return InsertionResult(method: .accessibility, delivery: .verified, text: text)
+            case .unverified: return InsertionResult(method: .accessibility, delivery: .unverified, text: text)
+            case .rejected:
+                if strategy == .accessibilityOnly { throw InsertionError.accessibilityRejected }
             }
-            log.debug("Accessibility declined; pasting")
-            _ = await pasteboard.write(text)
-            return .pasteboard
-        case .accessibilityOnly:
-            guard await accessibility.write(text) else { throw InsertionError.accessibilityRejected }
-            return .accessibility
-        case .pasteboardOnly:
-            _ = await pasteboard.write(text)
-            return .pasteboard
         }
+        try Task.checkCancellation()
+        try validate(destination)
+        switch await pasteboard.write(text, to: destination) {
+        case .rejected: throw InsertionError.pasteRejected
+        case .verified: return InsertionResult(method: .pasteboard, delivery: .verified, text: text)
+        case .unverified: return InsertionResult(method: .pasteboard, delivery: .unverified, text: text)
+        }
+    }
+
+    private func validate(_ destination: InsertionDestination?) throws {
+        guard let destinations else { return } // pure test adapters
+        guard let destination else { throw InsertionError.destinationUnavailable }
+        guard destinations.matches(destination) else { throw InsertionError.destinationChanged }
     }
 }

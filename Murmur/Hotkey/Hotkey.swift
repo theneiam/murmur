@@ -50,6 +50,12 @@ struct Hotkey: Codable, Equatable, Hashable {
         isModifierOnly: true
     )
 
+    static let pasteLastDefault = Hotkey(
+        keyCode: UInt16(kVK_ANSI_V),
+        modifiers: CGEventFlags.maskCommand.rawValue | CGEventFlags.maskControl.rawValue,
+        isModifierOnly: false
+    )
+
     // MARK: Matching
 
     /// For modifier-only hotkeys: are exactly the required modifiers held?

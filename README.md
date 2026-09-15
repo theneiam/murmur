@@ -1,227 +1,178 @@
 # Murmur
 
-A lightweight, fully local push-to-talk dictation app for macOS — a WhisperFlow alternative that never touches the network at runtime.
+Free, open-source push-to-talk dictation for macOS. Hold a key, speak, release:
+Whisper transcribes on your Mac and Murmur inserts the words at your cursor.
+Speech recognition works offline after the model and tokenizer are downloaded.
+No account, cloud transcription or telemetry. MIT licensed.
 
-Hold a key, speak, release. The audio is transcribed on-device with Whisper (via [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift), CoreML on the Neural Engine) and the text is inserted at your cursor in whatever app is in front: Notes, Chrome, Slack, a terminal, anything.
+**[Download for Mac](https://github.com/theneiam/murmur/releases/latest)** ·
+[Website](https://theneiam.github.io/murmur/) · [Privacy](PRIVACY.md) ·
+[Report a problem](https://github.com/theneiam/murmur/issues)
 
-- Menu bar only, no Dock icon.
-- Push-to-talk **only** — hold to record, release to transcribe. No toggle mode, no streaming.
-- Any hotkey, including a single modifier held on its own (right ⌥, fn, ⌃⌥…).
-- Small / Medium / Large-v3-Turbo models, English + Russian (+ a few more) with auto-detect. The model stays warm in memory.
-- Text goes in through the Accessibility API (clipboard untouched); falls back to ⌘V with clipboard restore.
-- Floating indicator with a live level meter while recording and a "Transcribing…" state until the text lands. Optionally (*Settings → General → Show floating status panel*, off by default) it stays on screen as a small draggable status pill showing that Murmur is running.
-- Local statistics: words, dictations, speaking time and typing time saved per day, streaks, busiest hour — a one-line summary in the menu and a *Statistics…* window. Text-free, on this Mac only, off switch and reset in Settings.
-- The model stays warm in memory while you dictate and is dropped after an idle period (30 min by default, configurable); the reload happens while you speak.
-- 2-minute cap per recording (configurable 15 s – 3 min).
+Requires **macOS 14 or later and Apple Silicon**. Release DMGs are signed and
+notarized. See [CHANGELOG.md](CHANGELOG.md) for the contents of each release;
+features assigned to a version newer than the latest published release require
+a source build until that DMG is published.
 
-**Requirements:** macOS 14 or later, Apple Silicon. Building from source needs Xcode 16+.
+## Install and get started
 
-**Download:** signed and notarized DMGs are on the [releases page](https://github.com/theneiam/murmur/releases/latest). Website: <https://theneiam.github.io/murmur/> (source in `docs/`).
+1. Download the DMG from the releases page, open it, and drag **Murmur** into
+   **Applications**. Launch Murmur from Applications; it lives in the menu
+   bar, with no Dock icon.
+2. Follow onboarding to grant **Microphone** and **Accessibility** access.
+   Accessibility enables the global hotkey and insertion into other apps;
+   Murmur does not record keystrokes.
+3. Choose a speech model and press **Download**. Wait for the model to load:
+   the first load also fetches its tokenizer and compiles CoreML resources.
+   This setup needs a network connection and can take several minutes.
+4. Choose a comfortable hotkey in Settings, open a text field in another app,
+   hold the key while speaking, then release it. The floating indicator shows
+   recording level and processing state. Start with a short sentence in Notes.
+5. Once setup finishes, dictation can run offline. If you change models, allow
+   that model's first load to finish before relying on it without a network.
 
-**Privacy:** nothing leaves your Mac except the model download you start yourself; see [PRIVACY.md](PRIVACY.md). **Support:** [open an issue](https://github.com/theneiam/murmur/issues) and attach the file from *Help → Save Diagnostics Report…* (it contains no dictated text).
+A single modifier such as right **⌥** can be a hotkey. If using **fn / 🌐**,
+set System Settings → Keyboard → “Press 🌐 key to” → **Do Nothing**, otherwise
+a short press can open the emoji picker. If a modifier-only hotkey is held
+while another key is pressed, Murmur cancels recording so the shortcut can
+continue normally.
 
----
+## What Murmur does
 
-## Project layout
+- Push-to-talk recording: hold to speak, release to transcribe. No toggle or
+  streaming mode. The recording cap defaults to two minutes and is configurable.
+- Local Whisper models through [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift),
+  with all 99 Whisper language codes or auto-detection. Fix the language if
+  short phrases are detected incorrectly.
+- Direct Accessibility insertion where supported, with a clipboard-restoring
+  paste fallback. Murmur captures the intended app, field and selection at
+  key-down and stops if focus changes before delivery. See the compatibility
+  evidence below.
+- In-memory recovery for the last raw and processed transcript: copy either,
+  paste the processed text again, or clear both. Paste-last defaults to ⌃⌘V;
+  copy-last and a separate verbatim push-to-talk shortcut are configurable.
+- Searchable local corrections and phrase snippets with validated JSON
+  import/export, plus optional capitalization, filler removal, spoken layout
+  and punctuation commands, and trailing space between dictations.
+- Explicit per-app profiles for language, insertion, cleanup and newline
+  preferences. The profile is captured when dictation begins, so a setting
+  change cannot alter an in-flight result.
+- Preferred microphone fallback ordering and a local level test in Settings →
+  Audio. Audio restart decisions are bounded and ignore stale callbacks.
+- An optional draggable persistent status panel in Settings → General. The
+  recording indicator appears when needed even with this option off.
+- Local text-free statistics: words, dictations, speaking time, streaks and a
+  typing-time estimate. Turn collection off or reset it in Settings → General.
+- A warm model while in use, with configurable idle unloading to free memory.
+  A cold reload starts while you speak.
 
-```
-murmur/
-├── project.yml                  # XcodeGen spec → Murmur.xcodeproj
-├── scripts/
-│   ├── release.sh               # archive → Developer ID export → notarize → staple → DMG
-│   ├── make-dmg.sh
-│   └── ExportOptions.plist
-└── Murmur/
-    ├── App/
-    │   ├── MurmurApp.swift      # @main, MenuBarExtra + Settings scenes, AppDelegate
-    │   └── AppState.swift       # composition root + app-level policies
-    ├── Dictation/
-    │   ├── DictationSession.swift  # push-to-talk pipeline (record → transcribe → insert)
-    │   └── DictationSeams.swift    # the protocols it depends on + config/events
-    ├── Hotkey/
-    │   ├── Hotkey.swift         # hotkey model, matching, display names
-    │   └── HotkeyManager.swift  # CGEvent tap: press/release detection + hotkey capture
-    ├── Audio/
-    │   ├── AudioRecorder.swift  # AVAudioEngine → 16 kHz mono Float32, level meter, cap
-    │   └── AudioDevices.swift   # CoreAudio input-device enumeration
-    ├── Transcription/
-    │   ├── ModelCatalog.swift   # WhisperModel + TranscriptionLanguage enums
-    │   ├── TranscriptionEngine.swift   # backend protocol
-    │   ├── WhisperKitEngine.swift      # WhisperKit implementation (warm pipeline)
-    │   └── ModelManager.swift          # download / load / status per model
-    ├── Insertion/
-    │   ├── TextInserter.swift          # StrategyInserter over two TextWriting adapters
-    │   ├── AccessibilityInserter.swift # AXUIElement kAXSelectedText write + verification
-    │   └── PasteboardInserter.swift    # ⌘V with clipboard snapshot/restore
-    ├── PostProcessing/TextPostProcessor.swift
-    ├── Permissions/PermissionsManager.swift
-    ├── Settings/SettingsStore.swift    # UserDefaults-backed ObservableObject
-    ├── Support/                        # About panel, links, diagnostics, logger, sounds
-    ├── UI/
-    │   ├── StatusPanel/                # floating pill: StatusPanel (window), StatusPanelView, PanelState
-    │   ├── MenuBarView.swift
-    │   ├── OnboardingView.swift        # first-run permissions + model download
-    │   └── Settings/SettingsView.swift # General / Hotkey / Audio / Model / Text tabs
-    └── Resources/Assets.xcassets
-```
+Pending features and their verification state are tracked in
+[the roadmap](docs/ROADMAP.md). Implementation status is separate from a
+published release and from real microphone/app compatibility testing.
 
-The Xcode project is generated from `project.yml` with [XcodeGen](https://github.com/yonaskolb/XcodeGen) so the repo stays diff-friendly; `Murmur.xcodeproj`, `Info.plist` and the entitlements file are build outputs and are git-ignored.
+## Models and recognition quality
 
----
-
-## Build
-
-```bash
-brew install xcodegen            # once
-xcodegen generate                # creates Murmur.xcodeproj (+ Info.plist, entitlements)
-open Murmur.xcodeproj            # or: xcodebuild -scheme Murmur -configuration Debug build
-```
-
-To sign with your own Apple Development certificate, copy `Config/Local.xcconfig.example` to `Config/Local.xcconfig` (git-ignored) and put your Team ID in it, then run. Without it the build is ad-hoc signed: it works, but macOS asks for the Accessibility and Microphone permissions again after every rebuild. Don't set the team in Xcode's Signing tab — `xcodegen generate` overwrites it. The first build resolves the `argmax-oss-swift` package (this is the renamed WhisperKit repo; the `WhisperKit` library product is what Murmur links).
-
-### First run
-
-Murmur opens an onboarding window that walks through the three things it needs:
-
-1. **Microphone** — standard system prompt. If denied, the window links to *Privacy & Security → Microphone* and keeps polling until it's granted.
-2. **Accessibility** — required for the global hotkey (an active CGEvent tap) and for AXUIElement text insertion. The window offers the system prompt plus a direct link to *Privacy & Security → Accessibility*. macOS does not notify apps when this changes, so Murmur polls every second while onboarding is open (and every 2 s in the background) and brings the hotkey listener up the moment it's granted.
-3. **Model download** — the only time Murmur uses the network. Pick a model and press Download; progress is shown inline.
-
-> **Debug builds and Accessibility.** macOS ties the Accessibility grant to the code signature. With a Team ID in `Config/Local.xcconfig`, debug builds are signed with your stable Apple Development certificate and the grant survives rebuilds. Without it, Xcode signs ad-hoc and every build is a new identity: the Accessibility toggle stays on but the app is not trusted, and you must remove Murmur from the list and add it again. `codesign -d -r- Murmur.app` should name the certificate, not a `cdhash`.
-
-> **fn / 🌐 as the hotkey.** Set *System Settings → Keyboard → "Press 🌐 key to" → Do Nothing*, otherwise a short press opens the emoji picker.
-
----
-
-## How it works
-
-**Hotkey (`HotkeyManager`).** One session-level `CGEvent` tap, running on a dedicated thread so a busy main thread never delays keystrokes, listens for `keyDown`, `keyUp` and `flagsChanged`. Key-based hotkeys are swallowed so they don't also type into the focused app; modifier-only hotkeys are matched on `flagsChanged` using both the generic modifier bits and the device-specific left/right bits, so "right ⌥" and "left ⌥" are different keys. If you type another key while a modifier-only hotkey is held (i.e. you are using a shortcut), the recording is cancelled silently. The same tap is used by the Settings hotkey recorder so what you record is exactly what gets matched later. Murmur's own synthesized ⌘V is tagged and ignored by the tap.
-
-**Audio (`AudioRecorder`).** A fresh `AVAudioEngine` per utterance (so device changes take effect immediately), tapped at the hardware format and converted on the fly to 16 kHz mono Float32 with `AVAudioConverter`. RMS level per buffer drives the indicator. When the sample count hits the cap, the recorder stops itself and the app transcribes as if the key had been released. Bluetooth headsets change format when they switch to their headset profile, which makes `AVAudioEngine` stop itself; the recorder listens for `AVAudioEngineConfigurationChange` and rebuilds the engine, and restarts it if no audio has arrived after 1.5 s (up to three times), keeping whatever was captured before.
-
-**Transcription (`WhisperKitEngine`).** A single `WhisperKit` pipeline is created with `prewarm: true` and kept for the life of the process. Decoding uses prefill prompts, no timestamps and VAD chunking with concurrent workers, so a 10 s utterance is one chunk and a 2-minute recording is split on silence and decoded in parallel. Language is either fixed (`en`, `ru`, …) or auto-detected.
-
-**Memory.** A warm model costs 0.5–1.5 GB. `AppState` arms an idle timer after every dictation; when it fires the engine unloads (`ModelManager.unloadForIdle`). Recording never waits for the model — a cold model starts loading the moment the hotkey goes down and `finish` awaits it before transcribing — so the only visible cost of a reload is a longer "Loading model…" spinner after release.
-
-**Insertion (`TextInserter`).** Default strategy: get `kAXFocusedUIElement` from the system-wide AX element, check `kAXSelectedText` is settable, write the text (which replaces the selection or inserts at a collapsed caret), then verify by reading the selected range back. If the app ignores the write, fall back to the pasteboard path: snapshot every item/type on `NSPasteboard.general`, set the text, post ⌘V, wait 250 ms, restore the snapshot. Strategy is selectable in *Settings → General*.
-
-**Post-processing (`TextPostProcessor`).** Optional sentence capitalization, filler-word stripping (English + Russian fillers, Unicode-aware word boundaries), a whole-word replacement dictionary for names and jargon, and a trailing space so consecutive dictations don't run together.
-
-### Insertion compatibility
-
-*Settings → General → Test insertion…* inserts a sample sentence into whatever app you click into within 3 seconds and reports which path delivered it, so an app can be checked without dictating. The matrix below is what has been verified so far; please extend it.
-
-| App | Path | Result |
-|---|---|---|
-| Notes | Accessibility | inserted once |
-| Mail (compose) | paste | inserted once — Mail's WebKit editor does not accept AX selected-text writes |
-| Gmail (browser) | paste | inserted once |
-| Slack | paste | inserted once |
-| Claude (desktop) | paste | inserted once |
-| Herdr | paste | inserted once |
-| *Not yet tested:* Safari / Chrome forms, VS Code, Xcode, Terminal, Word, Google Docs | | |
-
-Verified 2026-09-08 on macOS 26.5 with the "Accessibility, fall back to paste" strategy.
-
-A "via paste" result is fine — it means the app ignores AX writes and the fallback did its job. What to watch for is text appearing **twice** (the app accepted the AX write but exposed nothing to verify it, so Murmur pasted as well) or not at all; either is a bug worth reporting with the app name.
-
-### Latency
-
-For a ~10 s utterance on an M-series Mac with the model warm, expect roughly: Small ≈ 0.3–0.5 s, Large-v3-Turbo (626 MB) ≈ 0.6–1.0 s, Medium ≈ 1–1.5 s, plus ~50 ms for insertion. The **first** transcription after launch is slower because CoreML specializes the model for the Neural Engine on load (see "First load" in the model picker; it is cached by the OS afterwards). If you need the ≤1 s target on Medium consistently, fixing the language (instead of auto-detect) removes one decoder pass.
-
----
-
-## Models
-
-Murmur pulls CoreML bundles from the `argmaxinc/whisperkit-coreml` Hugging Face repo into `~/Library/Application Support/Murmur/Models/models/argmaxinc/whisperkit-coreml/<variant>/`.
-
-| Setting | Repo variant | Approx. size | Notes |
+| Model | Download variant | Approximate download | Tradeoff |
 |---|---|---|---|
-| Small | `openai_whisper-small` | ~500 MB | Fastest; weakest on Russian |
-| Medium | `openai_whisper-medium` | ~1.5 GB | Good multilingual accuracy |
-| Large v3 Turbo | `openai_whisper-large-v3-v20240930_626MB` | ~630 MB | Best accuracy; Argmax's recommended on-device build |
+| Small | `openai_whisper-small` | 500 MB | Lower storage and compute requirements; compare accuracy on your language and names. |
+| Medium | `openai_whisper-medium` | 1.5 GB | A larger multilingual model; allow more time for first load. |
+| Large v3 Turbo | `openai_whisper-large-v3-v20240930_626MB` | 630 MB | Compressed large-v3-turbo checkpoint; compare speed and recognition on your Mac. |
 
-A naming trap worth knowing: in that repo, OpenAI's *large-v3-turbo* checkpoint is the one dated `v20240930`. The `_turbo` suffix on other folders (e.g. `openai_whisper-large-v3_turbo`) refers to an encoder *compute* optimisation, not the turbo checkpoint.
+Models come from `argmaxinc/whisperkit-coreml` on Hugging Face and are stored
+under `~/Library/Application Support/Murmur/Models`. Download size is not a
+promise about runtime memory. First-load compilation and later warm inference
+are different costs.
 
-### Adding a model
+A Bluetooth headset can change audio profiles when its microphone opens,
+which can delay capture and reduce input quality. Try the built-in microphone
+in Settings → Audio and compare the same words before changing models. The
+project does not yet have a representative accuracy or latency baseline;
+[the measurement procedure](docs/BENCHMARKS.md) separates microphone quality,
+model accuracy, decoder time and release-to-delivery latency. No fixed
+subsecond latency is guaranteed.
 
-1. Find the folder name in the [repo](https://huggingface.co/argmaxinc/whisperkit-coreml/tree/main) — e.g. `distil-whisper_distil-large-v3_turbo_600MB`.
-2. Add a case to `WhisperModel` in `Murmur/Transcription/ModelCatalog.swift` with that raw value and fill in `displayName`, `approximateSizeMB`, `speedDescription`, `accuracyDescription` and `firstLoadDescription`.
-3. That's it — the Settings and onboarding pickers iterate `WhisperModel.allCases`. If the model is English-only (`.en`), also make sure the language picker defaults make sense for it.
+## Insertion compatibility
 
-To ship a model **inside** the app instead of downloading it, copy the variant folder into the bundle as a folder reference and, in `ModelManager.folder(for:)`, return `Bundle.main.resourceURL/…` for that case before falling back to Application Support. Expect the .app to grow by the model size and notarization to take correspondingly longer.
+Settings → General → **Test insertion…** gives you three seconds to select a
+field, then sends a sample sentence. Confirm that the text appeared once; a
+reported paste attempt alone cannot establish that the receiving app accepted
+it. Keep your cursor in the intended field until insertion finishes.
 
-To use a different backend (whisper.cpp with Metal, MLX), implement `TranscriptionEngine` (`load`, `unload`, `transcribe(samples:language:)`) and pass it to `ModelManager(engine:)` in `AppState`.
+The following historical checks used macOS 26.5 on 2026-09-08 with the
+“Accessibility, fall back to paste” strategy. App/browser versions were not
+recorded. These are single-line observations, not verification of the latest
+source changes or every editor in an application.
 
-### Network use, precisely
+| App/field | Observed path | Observed result |
+|---|---|---|
+| Notes | Accessibility | Inserted once |
+| Mail compose | Paste | Inserted once; its editor did not accept AX selected-text writes |
+| Gmail in browser | Paste | Inserted once |
+| Slack | Paste | Inserted once |
+| Claude desktop | Paste | Inserted once |
+| Herdr | Paste | Inserted once |
+| Safari/Chrome forms, VS Code, Xcode, Terminal, Word, Google Docs | Not recorded | Not yet verified |
 
-- **Model download** — on explicit user action only (Download / Retry buttons). A free-space check runs first (bundle size + 20 % + 500 MB for the CoreML cache); downloads can be cancelled and resume where they stopped.
-- **Links** — *Check for Updates…*, *Help → Report a Problem…*, *Privacy Statement*, *Website* and the About panel open pages in your browser when clicked. There is no background update check.
-- **Tokenizer** — WhisperKit fetches the matching `openai/whisper-*` tokenizer files the first time a model is loaded and caches them under `Models/tokenizers/`. Loading is fully offline after that.
-- Nothing else. No telemetry, no accounts, no update checks.
+New compatibility reports should name the Murmur build, macOS and app/browser
+versions, field type, insertion strategy, single/multiline output and what
+actually appeared. Check selection replacement, focus changes and duplicate
+insertion. [Manual checks](docs/TESTING.md) and MUR-013 in the roadmap track
+remaining coverage. Secure Keyboard Entry can prevent the global hotkey from
+being visible to Murmur.
 
----
+## Privacy and network use
 
-## Signing, notarization, DMG
+Audio stays in memory and is discarded after use; Murmur does not save audio
+or transcript history. Settings, downloaded models and daily text-free
+statistics stay on this Mac. Recent text is available in memory for recovery.
 
-The app is **not** sandboxed (global event taps and AX writes into other apps require it) and runs with the hardened runtime. Entitlements: `com.apple.security.device.audio-input` only.
+Network setup consists of a user-started model download and the matching
+one-time tokenizer fetch when that model first loads. Downloads can be
+cancelled and retried. Help and **Check for Updates…** open your browser only
+when clicked; there is no automatic update check.
 
-One-time setup:
-
-```bash
-# Store notarization credentials in the keychain (needs an app-specific password
-# from appleid.apple.com and your 10-character Team ID)
-xcrun notarytool store-credentials "murmur-notary" \
-  --apple-id you@example.com --team-id XXXXXXXXXX --password xxxx-xxxx-xxxx-xxxx
-```
-
-Release build:
-
-```bash
-TEAM_ID=XXXXXXXXXX NOTARY_PROFILE=murmur-notary scripts/release.sh
-# → build/release/Murmur-<version>.dmg, notarized and stapled (app and DMG)
-```
-
-The script: regenerates the project, archives Release/arm64, exports with the Developer ID method (`scripts/ExportOptions.plist`), verifies the signature, notarizes and staples the .app, wraps it in a compressed DMG with an `/Applications` symlink, then notarizes and staples the DMG and runs a Gatekeeper assessment. `SKIP_NOTARIZE=1` produces a signed-but-unnotarized build for local testing; `VERSION=0.2.0` overrides the marketing version.
-
-Signing identity: automatic signing with `DEVELOPMENT_TEAM` picks the *Developer ID Application* certificate for the `developer-id` export method. If you prefer manual signing, set `CODE_SIGN_STYLE: Manual` and `CODE_SIGN_IDENTITY: "Developer ID Application"` in `project.yml`.
-
----
+The paste fallback temporarily puts text on the system clipboard, marks it
+transient for cooperating clipboard managers, and restores the previous
+contents unless another copy has replaced them. The app receiving your text
+has its own storage/network behavior. Details, including diagnostics and
+intentional vocabulary exports, are in [PRIVACY.md](PRIVACY.md).
 
 ## Troubleshooting
 
-| Symptom | Likely cause / fix |
+| Symptom | What to check |
 |---|---|
-| Menu shows "Accessibility permission needed" although it's ticked | Signature changed (new debug build). Remove Murmur from the Accessibility list and re-add it. |
-| Hotkey works but nothing is inserted in one app | That app ignores AX selected-text writes; switch to "Accessibility, fall back to paste" (default) or "Paste only". |
-| Text lands in the wrong place | The target app lost focus (e.g. Settings window is frontmost). Murmur's indicator never takes focus; close Settings before dictating. |
-| First dictation takes many seconds | CoreML specialization on first load. Subsequent runs are fast; it is cached across launches. |
-| "Model error" after a macOS update | Delete the model in Settings → Model and download again (CoreML cache invalidated). |
-| Start of each dictation is cut off with AirPods / a Bluetooth headset | Bluetooth microphones take ~1 s to switch into headset mode after the engine starts. Murmur shows a one-time hint; pick the built-in microphone in *Settings → Audio* for dictation. |
-| Modifier-only hotkey triggers when using shortcuts | Expected — recording is cancelled as soon as you press another key, so nothing is transcribed. Pick a less-used key (right ⌥, fn, F13) if it's distracting. |
-| "No audio arrived from …" although Microphone is ticked | The engine ran but the named device never delivered audio. Murmur restarts the engine automatically when a device reconfigures (Bluetooth profile switch) or stays silent for 1.5 s, so this should be rare. Check whether QuickTime (File → New Audio Recording) gets a level from the same device: if not, Core Audio itself is stuck — `sudo killall coreaudiod` (audio drops for a second, apps reconnect). If the built-in mic fails right after a rebuild, the microphone grant no longer matches the app's signature: `tccutil reset Microphone com.yevhen.murmur`, relaunch, accept the prompt. |
-| Hotkey does nothing while Terminal / iTerm / a password prompt is in front | *Secure Keyboard Entry* is on. macOS hides keyboard events from every event tap while it is active. Turn it off (Terminal → Secure Keyboard Entry) or dictate into another app. |
+| Accessibility is enabled but the hotkey does nothing | A rebuilt/re-signed app may have a different identity. Remove Murmur from the Accessibility list and re-add the build you run; see the signing notes below. |
+| Hotkey does nothing in Terminal or a password prompt | Secure Keyboard Entry hides events from event taps. Check that setting or test in another app. |
+| Recording has no audio | Confirm the selected input and level in another app, such as QuickTime → New Audio Recording. Compare built-in versus Bluetooth input. A permission toggle alone does not prove the current binary can capture. |
+| Bluetooth clips the beginning | Wait for the input to become ready or choose the built-in microphone. Keep the same input when comparing recognition quality. |
+| A model takes a long time to become ready | The first load compiles CoreML resources and fetches the tokenizer. Subsequent cached loads differ; capture diagnostics if loading fails. |
+| Text is absent or duplicated in one app | Try Test insertion… and record the actual result with the app/version. Keep recent text for recovery and report which strategy was used. |
+| Murmur says the destination changed | Focus moved to another app, field or selection while Murmur was working, so it kept the text in memory instead of inserting elsewhere. Return to the intended field and use Paste Last Transcript. |
+| Auto-detection chooses the wrong language | Select the spoken language explicitly and compare the same utterance; report model and microphone as well as language. |
 
-Logs: `log stream --predicate 'subsystem == "com.yevhen.murmur"' --level debug`.
+For support, choose **Help → Save Diagnostics Report…** and attach the generated
+file to an issue. It contains versions, selected settings, device state,
+aggregate statistics and Murmur's own log, not dictated text. Review the file
+before sharing it. Report security concerns through [SECURITY.md](SECURITY.md).
 
-## Contributing
+## Build and contribute
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test and style, and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the shape of the code. Changes are listed in [CHANGELOG.md](CHANGELOG.md).
-
-## Tests
+Building requires Xcode 16+, XcodeGen and SwiftFormat:
 
 ```bash
-xcodebuild test -project Murmur.xcodeproj -scheme Murmur -destination 'platform=macOS'
+brew install xcodegen swiftformat
+xcodegen generate
+open Murmur.xcodeproj
 ```
 
-CI runs the same command on every push and pull request (`.github/workflows/ci.yml`, macOS runner, ad-hoc signing for the test host). `MurmurTests` covers the pure logic: text post-processing, hotkey matching and display names, tolerant settings decoding, model-bundle completeness and permission-poll bookkeeping. The tests are hosted in the app, whose delegate skips all start-up work under XCTest, so they can run while a real Murmur is in the menu bar.
+For stable development signing, copy `Config/Local.xcconfig.example` to the
+ignored `Config/Local.xcconfig` and set your Apple team there. Without it the
+build is ad-hoc signed and macOS can ask for permissions again after rebuilds.
+Do not set the team only in Xcode's Signing tab: XcodeGen overwrites it.
+The first build resolves the pinned WhisperKit package; no speech model is
+needed for automated tests.
 
----
-
-## License
-
-MIT — see `LICENSE`. Third-party components and model licenses are listed in `THIRD-PARTY-NOTICES.md` and under *About Murmur* in the menu.
-
-## Non-goals
-
-Toggle / hands-free mode, streaming partial results, any cloud API, accounts, telemetry, or a text editor of its own. Text goes into other apps only.
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for development, [AGENTS.md](AGENTS.md)
+for the documentation map, and [docs/RELEASING.md](docs/RELEASING.md) for
+signing/notarization and release gates. [LICENSE](LICENSE) is MIT;
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists component/model notices.

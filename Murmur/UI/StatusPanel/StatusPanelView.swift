@@ -41,7 +41,7 @@ struct StatusPanelView: View {
                 Image(systemName: idle.isWarning ? "exclamationmark.triangle.fill" : "mic.fill")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(idle.isWarning ? AnyShapeStyle(.orange) : AnyShapeStyle(MurmurBrand.gradient))
-                Text("Murmur")
+                Text("MurMur")
                     .font(.system(size: 13, weight: .semibold))
                     .fixedSize()
                 if !idle.hint.isEmpty {

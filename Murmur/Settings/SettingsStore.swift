@@ -5,7 +5,11 @@ import Foundation
 @MainActor
 final class SettingsStore: ObservableObject {
     @Published var hotkey: Hotkey { didSet { save(hotkey, key: .hotkey) } }
+    @Published var pasteLastHotkey: Hotkey? { didSet { save(pasteLastHotkey, key: .pasteLastHotkey) } }
+    @Published var copyLastHotkey: Hotkey? { didSet { save(copyLastHotkey, key: .copyLastHotkey) } }
+    @Published var verbatimHotkey: Hotkey? { didSet { save(verbatimHotkey, key: .verbatimHotkey) } }
     @Published var inputDeviceUID: String? { didSet { save(inputDeviceUID, key: .inputDeviceUID) } }
+    @Published var preferredInputDeviceUIDs: [String] { didSet { save(preferredInputDeviceUIDs, key: .preferredInputDeviceUIDs) } }
     @Published var model: WhisperModel { didSet { save(model, key: .model) } }
     @Published var language: TranscriptionLanguage { didSet { save(language, key: .language) } }
     @Published var insertionStrategy: InsertionStrategy { didSet { save(insertionStrategy, key: .insertionStrategy) } }
@@ -26,12 +30,14 @@ final class SettingsStore: ObservableObject {
     @Published var collectStatistics: Bool { didSet { save(collectStatistics, key: .collectStatistics) } }
     /// Used only for the "time saved" estimate.
     @Published var typingWordsPerMinute: Double { didSet { save(typingWordsPerMinute, key: .typingWordsPerMinute) } }
+    @Published var appProfiles: [AppProfile] { didSet { save(appProfiles, key: .appProfiles) } }
 
     private enum Key: String {
-        case hotkey, inputDeviceUID, model, language, insertionStrategy
+        case hotkey, pasteLastHotkey, copyLastHotkey, verbatimHotkey
+        case inputDeviceUID, preferredInputDeviceUIDs, model, language, insertionStrategy
         case postProcessing, maxRecordingSeconds, playSounds, hasCompletedOnboarding
         case unloadAfterIdleMinutes, hasShownBluetoothHint, showStatusPanel, statusPanelAnchor
-        case collectStatistics, typingWordsPerMinute
+        case collectStatistics, typingWordsPerMinute, appProfiles
         var storageKey: String { "murmur.\(rawValue)" }
     }
 
@@ -40,7 +46,11 @@ final class SettingsStore: ObservableObject {
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         hotkey = Self.load(Hotkey.self, key: .hotkey, from: defaults) ?? .default
+        pasteLastHotkey = Self.load(Hotkey?.self, key: .pasteLastHotkey, from: defaults) ?? .pasteLastDefault
+        copyLastHotkey = Self.load(Hotkey?.self, key: .copyLastHotkey, from: defaults) ?? nil
+        verbatimHotkey = Self.load(Hotkey?.self, key: .verbatimHotkey, from: defaults) ?? nil
         inputDeviceUID = Self.load(String?.self, key: .inputDeviceUID, from: defaults) ?? nil
+        preferredInputDeviceUIDs = Self.load([String].self, key: .preferredInputDeviceUIDs, from: defaults) ?? []
         model = Self.load(WhisperModel.self, key: .model, from: defaults) ?? .largeV3Turbo
         language = Self.load(TranscriptionLanguage.self, key: .language, from: defaults) ?? .auto
         insertionStrategy = Self.load(InsertionStrategy.self, key: .insertionStrategy, from: defaults) ?? .accessibilityThenPasteboard
@@ -54,6 +64,17 @@ final class SettingsStore: ObservableObject {
         statusPanelAnchor = Self.load(PanelAnchor?.self, key: .statusPanelAnchor, from: defaults) ?? nil
         collectStatistics = Self.load(Bool.self, key: .collectStatistics, from: defaults) ?? true
         typingWordsPerMinute = Self.load(Double.self, key: .typingWordsPerMinute, from: defaults) ?? 40
+        appProfiles = Self.load([AppProfile].self, key: .appProfiles, from: defaults) ?? []
+    }
+
+    func resolvedAppSettings(for bundleIdentifier: String?) -> ResolvedAppSettings {
+        AppProfileResolver.resolve(
+            bundleIdentifier: bundleIdentifier,
+            profiles: appProfiles,
+            globalLanguage: language,
+            globalInsertionStrategy: insertionStrategy,
+            globalPostProcessing: postProcessing
+        )
     }
 
     // MARK: Persistence

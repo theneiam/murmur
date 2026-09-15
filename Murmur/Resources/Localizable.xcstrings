@@ -1,0 +1,641 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    "“new line” / “новая строка” → line break\n“new paragraph” / “новый абзац” → blank line" : {
+
+    },
+    "%@  ·  %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@  ·  %2$@"
+          }
+        }
+      }
+    },
+    "%lld" : {
+
+    },
+    "%lld corrections and %lld snippets will replace your %lld existing entries. Export first if you want a backup." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld corrections and %2$lld snippets will replace your %3$lld existing entries. Export first if you want a backup."
+          }
+        }
+      }
+    },
+    "%lld s" : {
+
+    },
+    "%lld words this week" : {
+
+    },
+    "%lld%%" : {
+
+    },
+    "1 hour idle" : {
+
+    },
+    "3 hours idle" : {
+
+    },
+    "5 minutes idle" : {
+
+    },
+    "15 minutes idle" : {
+
+    },
+    "30 minutes idle" : {
+
+    },
+    "A warm model uses %@ of memory. After the idle period it is dropped and reloaded on the next dictation — loading happens while you speak, so you only notice a slightly longer wait for the text." : {
+
+    },
+    "About Murmur" : {
+
+    },
+    "Add a space after each dictation" : {
+
+    },
+    "Add an app to give it its own language, cleanup, insertion, and line-break behavior." : {
+
+    },
+    "Add App" : {
+
+    },
+    "Add correction" : {
+
+    },
+    "Add Microphone" : {
+
+    },
+    "Add snippet" : {
+
+    },
+    "Add trailing space" : {
+
+    },
+    "Allow Microphone Access" : {
+
+    },
+    "An explicit microphone is tried first. Automatic mode follows the preferred list below, then uses the system default." : {
+
+    },
+    "App profiles" : {
+
+    },
+    "Approval needed in System Settings → General → Login Items." : {
+
+    },
+    "Apps" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apps"
+          }
+        }
+      }
+    },
+    "Audio" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audio"
+          }
+        }
+      }
+    },
+    "Auto-detect works well for switching between English and Russian; fixing the language shaves a little off the latency and avoids mis-detection on very short phrases." : {
+
+    },
+    "Automatic (preferred order)" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Capitalize sentences" : {
+
+    },
+    "Capitalize the start of sentences" : {
+
+    },
+    "Case-sensitive phrase" : {
+
+    },
+    "Check for Updates…" : {
+
+    },
+    "Cleanup" : {
+
+    },
+    "Clear" : {
+
+    },
+    "Clear Last Transcript" : {
+
+    },
+    "Click the button, then click into any text field in another app within 3 seconds. A sample sentence is inserted and the indicator reports which path delivered it — useful for checking apps that behave oddly." : {
+
+    },
+    "Collect usage statistics" : {
+
+    },
+    "Copy Last Transcript" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy Last Transcript"
+          }
+        }
+      }
+    },
+    "Copy Raw Recognition" : {
+
+    },
+    "Correction" : {
+
+    },
+    "Correction: %@ → %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Correction: %1$@ → %2$@"
+          }
+        }
+      }
+    },
+    "Corrections replace known mishearings after recognition. Snippets expand an exact whole phrase into your saved text, preserving its casing and line breaks. Both are stored on this Mac and bypassed in verbatim mode. Import previews a replacement of the whole library." : {
+
+    },
+    "Counts words, dictations and timing per day, on this Mac only. Never stores what you said. Shown in the menu and under Statistics…." : {
+
+    },
+    "Daily counts and streaks will be erased. This cannot be undone." : {
+
+    },
+    "Day" : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete all statistics?" : {
+
+    },
+    "Delete Profile" : {
+
+    },
+    "Done" : {
+
+    },
+    "Download %@" : {
+
+    },
+    "Downloaded" : {
+
+    },
+    "Edit" : {
+
+    },
+    "Enable explicit punctuation and symbol commands" : {
+
+    },
+    "Explicit punctuation commands" : {
+
+    },
+    "Export…" : {
+
+    },
+    "Fix Permissions…" : {
+
+    },
+    "General" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "General"
+          }
+        }
+      }
+    },
+    "Heard as…" : {
+
+    },
+    "Help" : {
+
+    },
+    "Hold a key, speak, release — the text appears where your cursor is. Three quick steps first." : {
+
+    },
+    "Hold this key or combination to record; release to transcribe. Single modifier keys work too — right ⌥ and fn are popular choices. If you pick fn, set System Settings → Keyboard → “Press 🌐 key to” to “Do Nothing”." : {
+
+    },
+    "Hotkey" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hotkey"
+          }
+        }
+      }
+    },
+    "Import…" : {
+
+    },
+    "Input device" : {
+
+    },
+    "Insert this exact text" : {
+
+    },
+    "Insertion" : {
+
+    },
+    "Keeps the dictation indicator on screen all the time, showing that Murmur is running. Drag it anywhere; it never takes focus from the app you are typing in." : {
+
+    },
+    "Language" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Language"
+          }
+        }
+      }
+    },
+    "Language: %@" : {
+
+    },
+    "Last 7 days" : {
+
+    },
+    "Last dictation" : {
+
+    },
+    "Last insertion went via %@." : {
+
+    },
+    "Launch Murmur at login" : {
+
+    },
+    "Line breaks" : {
+
+    },
+    "Loading into memory… %@" : {
+
+    },
+    "Local vocabulary" : {
+
+    },
+    "Memory" : {
+
+    },
+    "Method" : {
+
+    },
+    "Microphone" : {
+
+    },
+    "Microphone access was denied. Murmur cannot record until it is enabled." : {
+
+    },
+    "Microphone test" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microphone test"
+          }
+        }
+      }
+    },
+    "Model" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model"
+          }
+        }
+      }
+    },
+    "Model: %@" : {
+
+    },
+    "Models are stored in ~/Library/Application Support/Murmur/Models." : {
+
+    },
+    "Murmur" : {
+
+    },
+    "MurMur" : {
+
+    },
+    "Murmur can count your words, dictations and timing per day — on this Mac only, never the text itself." : {
+
+    },
+    "Murmur records only while you hold the push-to-talk key. Audio is transcribed on this Mac and never leaves it." : {
+
+    },
+    "Needed for two things: noticing the push-to-talk key while another app is in front, and placing the transcribed text at your cursor." : {
+
+    },
+    "Never" : {
+
+    },
+    "No other running apps" : {
+
+    },
+    "No preferred microphones. The system default will be used." : {
+
+    },
+    "OK" : {
+
+    },
+    "Open" : {
+
+    },
+    "Open System Settings" : {
+
+    },
+    "Paste last is enabled by default as ⌃⌘V. Copy is optional. Both use only the most recent in-memory transcript." : {
+
+    },
+    "Paste Last Transcript" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paste Last Transcript"
+          }
+        }
+      }
+    },
+    "Pause before and after each command so it is a standalone sentence. Ordinary phrases such as “new line of credit” stay literal. Line breaks follow the destination's safety setting." : {
+
+    },
+    "Permissions" : {
+
+    },
+    "Pick a model to download. This is the only time Murmur uses the network." : {
+
+    },
+    "Play start/stop sounds" : {
+
+    },
+    "Preferred fallback order" : {
+
+    },
+    "Privacy & Security → Accessibility → enable Murmur. Without it the hotkey can't be detected and text can't be inserted. This view updates automatically once granted." : {
+
+    },
+    "Privacy & Security → Microphone → enable Murmur" : {
+
+    },
+    "Privacy Statement" : {
+
+    },
+    "Profiles store only the destination app's identifier and your chosen settings. Each profile starts as a copy of your current global settings." : {
+
+    },
+    "Push-to-talk key" : {
+
+    },
+    "Push-to-talk key: **%@** — change it in Settings." : {
+
+    },
+    "Quit Murmur" : {
+
+    },
+    "Ready" : {
+
+    },
+    "Recognized: %@" : {
+
+    },
+    "Recording" : {
+
+    },
+    "Recording stops and transcribes automatically after this long, even if the key is still held." : {
+
+    },
+    "Recovery shortcuts" : {
+
+    },
+    "Refresh Devices" : {
+
+    },
+    "Remove filler words" : {
+
+    },
+    "Remove filler words (um, uh, э, эм…)" : {
+
+    },
+    "Replace library" : {
+
+    },
+    "Replace with…" : {
+
+    },
+    "Report a Problem…" : {
+
+    },
+    "Request Accessibility Access" : {
+
+    },
+    "Reset Statistics…" : {
+
+    },
+    "Reset to Right ⌥" : {
+
+    },
+    "Reset…" : {
+
+    },
+    "Retry" : {
+
+    },
+    "Review vocabulary import" : {
+
+    },
+    "Save" : {
+
+    },
+    "Save a Correction from Last Dictation…" : {
+
+    },
+    "Save Diagnostics Report…" : {
+
+    },
+    "Search corrections and snippets" : {
+
+    },
+    "Set up Murmur" : {
+
+    },
+    "Settings…" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings…"
+          }
+        }
+      }
+    },
+    "Show floating status panel" : {
+
+    },
+    "Snippet: %@" : {
+
+    },
+    "Speak normally and check that the meter moves. Test audio stays in memory and is discarded when the test stops." : {
+
+    },
+    "Speech model" : {
+
+    },
+    "Spoken commands" : {
+
+    },
+    "Spoken language" : {
+
+    },
+    "Spoken layout commands" : {
+
+    },
+    "Spoken phrase" : {
+
+    },
+    "Start Test" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start Test"
+          }
+        }
+      }
+    },
+    "Statistics" : {
+
+    },
+    "Statistics are turned off" : {
+
+    },
+    "Statistics…" : {
+
+    },
+    "Stop Test" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop Test"
+          }
+        }
+      }
+    },
+    "Stored on this Mac only, in Statistics.json. No text is kept." : {
+
+    },
+    "Test insertion…" : {
+
+    },
+    "Text" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Text"
+          }
+        }
+      }
+    },
+    "Text insertion" : {
+
+    },
+    "That shortcut is already assigned to another Murmur action." : {
+
+    },
+    "The selected microphone is disconnected. Murmur will try your preferred microphones, then the system default, until it returns." : {
+
+    },
+    "This second push-to-talk shortcut bypasses cleanup, corrections, snippets, and spoken commands for one dictation." : {
+
+    },
+    "Today" : {
+
+    },
+    "Today: %lld words · %lld %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Today: %1$lld words · %2$lld %3$@"
+          }
+        }
+      }
+    },
+    "Today: nothing yet" : {
+
+    },
+    "Turn On" : {
+
+    },
+    "Turn spoken layout words into line breaks" : {
+
+    },
+    "Unload model after" : {
+
+    },
+    "Use" : {
+
+    },
+    "Used only to estimate the typing time dictation saved you." : {
+
+    },
+    "Uses the recognizer's text without cleanup, corrections, snippets or spoken commands. The destination's line-break safety setting still applies." : {
+
+    },
+    "Verbatim output" : {
+
+    },
+    "Verbatim shortcut" : {
+
+    },
+    "Vocabulary could not be changed" : {
+
+    },
+    "Voice snippet" : {
+
+    },
+    "Website" : {
+
+    },
+    "Words" : {
+
+    },
+    "words per minute" : {
+
+    },
+    "Your typing speed" : {
+
+    }
+  },
+  "version" : "1.0"
+}

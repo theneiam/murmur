@@ -13,15 +13,22 @@ struct MenuBarView: View {
             Text(appState.statusText)
 
             if let transcript = appState.lastTranscript, !transcript.isEmpty {
-                let via = appState.lastInsertionMethod.map { " · via \($0.displayName)" } ?? ""
-                Text("Last: " + String(transcript.prefix(60)) + (transcript.count > 60 ? "…" : "") + via)
-                    .foregroundStyle(.secondary)
                 // Safety net: if insertion failed or landed in the wrong place,
                 // the dictation is still recoverable from here.
-                Button("Copy Last Transcript") {
-                    let pasteboard = NSPasteboard.general
-                    pasteboard.clearContents()
-                    pasteboard.setString(transcript, forType: .string)
+                Button("Paste Last Transcript") { appState.session.pasteLastTranscript() }
+                    .disabled(appState.phase != .idle || appState.session.hasPendingWork)
+                Button("Copy Last Transcript") { appState.copyLastTranscript() }
+                if let raw = appState.lastRawTranscript, raw != transcript {
+                    Button("Copy Raw Recognition") {
+                        let pasteboard = NSPasteboard.general
+                        pasteboard.clearContents()
+                        pasteboard.setString(raw, forType: .string)
+                    }
+                }
+                Button("Clear Last Transcript") { appState.session.clearLastTranscript() }
+                if let timing = appState.lastTiming {
+                    Text(String(format: "Release to delivery %.2f s · recognition %.2f s", timing.releaseToDelivery, timing.transcription))
+                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -47,6 +54,7 @@ struct MenuBarView: View {
                         Text(model.displayName + (models.isDownloaded(model) ? "" : "  (not downloaded)"))
                     }
                 }
+                .disabled(models.isInUse)
             }
         }
 

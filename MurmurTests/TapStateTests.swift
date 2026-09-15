@@ -104,6 +104,56 @@ final class TapStateTests: XCTestCase {
         XCTAssertEqual(state.reset(), [])
     }
 
+    func testDisabledTapCancelsHeldDictationAndAllowsTheNextPress() {
+        for type in [CGEventType.tapDisabledByTimeout, .tapDisabledByUserInput] {
+            var state = TapState(hotkey: .default)
+            _ = state.handle(type: .flagsChanged, keyCode: UInt16(kVK_RightOption), flags: rightOptionDown)
+            let disabled = state.handle(type: type, keyCode: 0, flags: none)
+            XCTAssertEqual(disabled.events, [.cancel])
+            XCTAssertFalse(disabled.swallow)
+            XCTAssertFalse(state.isDown)
+            let next = state.handle(type: .flagsChanged, keyCode: UInt16(kVK_RightOption), flags: rightOptionDown)
+            XCTAssertEqual(next.events, [.press])
+        }
+    }
+
+    func testPasteRecoveryShortcutFiresOnceAndSwallowsItsRelease() {
+        var state = TapState(hotkey: .default)
+        let flags = CGEventFlags(rawValue: cmd | CGEventFlags.maskControl.rawValue)
+        let down = state.handle(type: .keyDown, keyCode: UInt16(kVK_ANSI_V), flags: flags)
+        XCTAssertTrue(down.swallow)
+        XCTAssertEqual(down.events, [.pasteLast])
+        XCTAssertEqual(state.handle(type: .keyDown, keyCode: UInt16(kVK_ANSI_V), flags: flags).events, [])
+        XCTAssertTrue(state.handle(type: .keyUp, keyCode: UInt16(kVK_ANSI_V), flags: none).swallow)
+        XCTAssertFalse(state.isDown, "recovery does not start recording")
+    }
+
+    func testEscapeCancelsProcessingWithoutStealingEscapeWhenIdle() {
+        var state = TapState(hotkey: .default)
+        XCTAssertFalse(state.handle(type: .keyDown, keyCode: UInt16(kVK_Escape), flags: none).swallow)
+        state.cancellationEnabled = true
+        let escape = state.handle(type: .keyDown, keyCode: UInt16(kVK_Escape), flags: none)
+        XCTAssertEqual(escape.events, [.cancel])
+        XCTAssertTrue(escape.swallow)
+        XCTAssertEqual(state.handle(type: .keyDown, keyCode: UInt16(kVK_Escape), flags: none).events, [])
+        state.cancellationEnabled = false
+        XCTAssertTrue(state.handle(type: .keyUp, keyCode: UInt16(kVK_Escape), flags: none).swallow)
+        XCTAssertFalse(state.handle(type: .keyDown, keyCode: UInt16(kVK_Escape), flags: none).swallow)
+    }
+
+    func testVerbatimShortcutUsesItsOwnHeldKeyAndTheOrdinaryRelease() {
+        var state = TapState(hotkey: .default)
+        state.verbatimHotkey = Hotkey(keyCode: UInt16(kVK_F13), modifiers: 0, isModifierOnly: false)
+        let press = state.handle(type: .keyDown, keyCode: UInt16(kVK_F13), flags: none)
+        XCTAssertTrue(press.swallow)
+        XCTAssertEqual(press.events, [.verbatimPress])
+        XCTAssertEqual(state.handle(type: .keyDown, keyCode: UInt16(kVK_F13), flags: none).events, [])
+        let release = state.handle(type: .keyUp, keyCode: UInt16(kVK_F13), flags: none)
+        XCTAssertTrue(release.swallow)
+        XCTAssertEqual(release.events, [.release])
+        XCTAssertFalse(state.isDown)
+    }
+
     // MARK: Capture
 
     func testCaptureRecordsModifierChordOnFullRelease() {

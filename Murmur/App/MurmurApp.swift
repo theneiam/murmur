@@ -56,6 +56,22 @@ private struct MenuBarIcon: View {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private(set) static var didPerformStartup = false
+
+    /// XCTest's hosted app starts before `XCTestConfigurationFilePath` is
+    /// consistently visible. The injection variables and library are already
+    /// present at launch, so include them when deciding whether to touch
+    /// global macOS state.
+    nonisolated static func isRunningTests(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> Bool {
+        if environment["MURMUR_RUNNING_TESTS"] == "1" { return true }
+        let testKeys = ["XCTestConfigurationFilePath", "XCTestBundlePath", "XCInjectBundle", "XCInjectBundleInto"]
+        if testKeys.contains(where: { environment[$0] != nil }) { return true }
+        if environment["DYLD_INSERT_LIBRARIES"]?.contains("XCTestBundleInject") == true { return true }
+        return arguments.contains { $0.localizedCaseInsensitiveContains("xctest") }
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // LSUIElement in Info.plist already hides the Dock icon; this is a
@@ -65,8 +81,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Unit tests are hosted in this app. Do nothing that touches the
         // system (event tap, permission prompts, model load, windows) so a
         // test run can coexist with a real Murmur instance.
-        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
+        if Self.isRunningTests() { return }
 
+        Self.didPerformStartup = true
         let state = AppState.shared
         state.start()
 

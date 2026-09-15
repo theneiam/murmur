@@ -28,22 +28,31 @@ final class FakeRecorder: AudioCapturing {
 
 actor ScriptedEngine: TranscriptionEngine {
     var text = "hello world"
+    /// What the engine claims it detected, independent of the requested language.
+    var detectedLanguage: String?
     var delay: Duration = .zero
     var error: Error?
+    var ignoresCancellation = false
     private(set) var transcribeCalls = 0
     var loadedModel: WhisperModel? { nil }
 
     func set(text: String) { self.text = text }
+    func setLanguage(_ code: String?) { detectedLanguage = code }
     func set(delay: Duration) { self.delay = delay }
     func set(error: Error?) { self.error = error }
+    func setIgnoringCancellation() { ignoresCancellation = true }
 
     func load(model: WhisperModel, folder: URL, tokenizerFolder: URL) async throws {}
     func unload() async {}
     func transcribe(samples: [Float], language: TranscriptionLanguage) async throws -> Transcript {
         transcribeCalls += 1
-        if delay > .zero { try await Task.sleep(for: delay) }
+        if ignoresCancellation {
+            await withCheckedContinuation { continuation in
+                DispatchQueue.global().asyncAfter(deadline: .now() + 0.35) { continuation.resume() }
+            }
+        } else if delay > .zero { try await Task.sleep(for: delay) }
         if let error { throw error }
-        return Transcript(text: text, processingTime: 0.1)
+        return Transcript(text: text, language: detectedLanguage, processingTime: 0.1)
     }
 }
 
@@ -71,13 +80,21 @@ final class FakeModels: ModelProviding {
 @MainActor
 final class FakeInserter: TextInserting {
     var method: InsertionMethod = .accessibility
+    var delivery: DeliveryStatus = .verified
+    var destination = InsertionDestination(processID: 100, bundleIdentifier: "test.editor")
+    var delay: Duration = .zero
+    private(set) var receivedDestination: InsertionDestination?
     var error: Error?
     private(set) var inserted: [(text: String, strategy: InsertionStrategy)] = []
 
-    func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionMethod {
+    func captureDestination() -> InsertionDestination? { destination }
+
+    func insert(_ text: String, strategy: InsertionStrategy, destination: InsertionDestination?) async throws -> InsertionResult {
+        receivedDestination = destination
+        if delay > .zero { try await Task.sleep(for: delay) }
         if let error { throw error }
         inserted.append((text, strategy))
-        return method
+        return InsertionResult(method: method, delivery: delivery, text: text)
     }
 }
 
@@ -123,10 +140,13 @@ final class DictationSessionTests: XCTestCase {
         makeSession()
     }
 
-    private func makeSession(timeout: Duration = .seconds(5)) {
+    private func makeSession(
+        timeout: Duration = .seconds(5),
+        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    ) {
         session = DictationSession(
             recorder: recorder, models: models, inserter: inserter, presenter: presenter,
-            config: { [unowned self] in config }, transcriptionTimeout: timeout
+            config: { [unowned self] in config }, transcriptionTimeout: timeout, now: now
         )
         session.onEvent = { [weak self] in self?.events.append($0) }
     }
@@ -179,6 +199,48 @@ final class DictationSessionTests: XCTestCase {
         XCTAssertEqual(presenter.calls, ["recording", "cue:start", "cue:stop", "working:Transcribing…", "hide"])
     }
 
+    func testDestinationProfileIsSnapshottedAtPress() async {
+        inserter.destination.bundleIdentifier = "com.example.Editor"
+        var profiled = config!
+        profiled.postProcessing.replacements = [Replacement(find: "hello world", replace: "profile text")]
+        session = DictationSession(
+            recorder: recorder,
+            models: models,
+            inserter: inserter,
+            presenter: presenter,
+            config: { [unowned self] in config },
+            destinationConfig: { bundleIdentifier in
+                XCTAssertEqual(bundleIdentifier, "com.example.Editor")
+                return profiled
+            }
+        )
+
+        session.press()
+        // A later settings mutation cannot change this dictation's snapshot.
+        profiled.postProcessing.replacements = []
+        session.release()
+        await awaitIdle()
+
+        XCTAssertEqual(inserter.inserted.first?.text, "Profile text ")
+    }
+
+    func testCancelDuringInsertionStopsLateCompletion() async {
+        inserter.delay = .milliseconds(300)
+        session.press()
+        session.release()
+        for _ in 0 ..< 200 where session.phase != .inserting { try? await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(session.phase, .inserting)
+
+        session.cancel()
+        XCTAssertEqual(session.phase, .idle)
+        try? await Task.sleep(for: .milliseconds(350))
+
+        XCTAssertTrue(inserter.inserted.isEmpty)
+        XCTAssertFalse(events.contains { if case .inserted = $0 { return true }
+            return false
+        })
+    }
+
     func testLevelsAreForwardedToThePresenter() {
         recorder.onLevel?(0.5)
         XCTAssertEqual(presenter.calls, ["level"])
@@ -188,6 +250,38 @@ final class DictationSessionTests: XCTestCase {
         config.playSounds = false
         await dictate()
         XCTAssertFalse(presenter.calls.contains { $0.hasPrefix("cue:") })
+    }
+
+    func testDestinationIsCapturedBeforeTranscriptionAndDoesNotFollowFocus() async {
+        await models.scripted.set(delay: .milliseconds(50))
+        session.press()
+        session.release()
+        inserter.destination = InsertionDestination(processID: 200, bundleIdentifier: "other.app")
+        await awaitIdle()
+        XCTAssertEqual(inserter.receivedDestination?.processID, 100)
+    }
+
+    func testRawTranscriptSurvivesPostProcessingAndInsertionFailure() async {
+        config.postProcessing.replacements = [Replacement(find: "hello", replace: "Greetings")]
+        inserter.error = TestError()
+        await dictate()
+        XCTAssertEqual(session.lastRawTranscript, "hello world")
+        XCTAssertEqual(session.lastTranscript, "Greetings world")
+    }
+
+    func testTimingSeparatesEveryStageAndUsesOneDeliveryTimestamp() async {
+        var timestamps = [10.0, 12.0, 15.0, 16.0, 20.0].makeIterator()
+        makeSession(now: { timestamps.next()! })
+
+        await dictate()
+
+        XCTAssertEqual(session.lastTiming, DictationTiming(
+            modelWait: 2,
+            transcription: 3,
+            postProcessing: 1,
+            insertion: 4,
+            releaseToDelivery: 10
+        ))
     }
 
     // MARK: Guards before recording
@@ -291,6 +385,18 @@ final class DictationSessionTests: XCTestCase {
         XCTAssertTrue(events.isEmpty)
     }
 
+    func testCancelDuringTranscriptionReturnsImmediatelyAndNeverInserts() async {
+        await models.scripted.set(delay: .milliseconds(200))
+        session.press()
+        session.release()
+        await Task.yield()
+        session.cancel()
+        XCTAssertEqual(session.phase, .idle)
+        try? await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(inserter.inserted.isEmpty)
+        XCTAssertTrue(events.isEmpty)
+    }
+
     func testAutoStopFinishesTheDictation() async {
         session.press()
         recorder.triggerAutoStop()
@@ -324,6 +430,22 @@ final class DictationSessionTests: XCTestCase {
         XCTAssertEqual(session.lastError, TranscriptionError.timedOut.errorDescription)
         XCTAssertEqual(inserter.inserted.count, 0)
         XCTAssertEqual(events, [.failed(TranscriptionError.timedOut.errorDescription!)])
+    }
+
+    func testTimeoutReturnsBeforeUncooperativeEngineAndRejectsLateResult() async {
+        makeSession(timeout: .milliseconds(20))
+        await models.scripted.setIgnoringCancellation()
+        session.press()
+        session.release()
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(session.phase, .idle)
+        XCTAssertEqual(session.lastError, TranscriptionError.timedOut.errorDescription)
+        XCTAssertTrue(session.hasPendingWork, "the engine remains leased until it actually stops")
+        session.press()
+        XCTAssertEqual(recorder.startCalls.count, 1, "never pile another inference onto stalled CoreML")
+        try? await Task.sleep(for: .milliseconds(350))
+        XCTAssertTrue(inserter.inserted.isEmpty)
+        XCTAssertFalse(session.hasPendingWork)
     }
 
     func testTranscriptionErrorIsReported() async {

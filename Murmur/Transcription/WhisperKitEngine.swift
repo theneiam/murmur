@@ -37,7 +37,9 @@ actor WhisperKitEngine: TranscriptionEngine {
             // Neural Engine — the fastest combination on Apple Silicon.
             verbose: false,
             logLevel: .error,
-            prewarm: true,
+            // `prewarm` with `load` makes WhisperKit run a full MLModel.load
+            // over all three models and discard the result; `load` does it again.
+            prewarm: false,
             load: true,
             download: false
         )
@@ -64,6 +66,7 @@ actor WhisperKitEngine: TranscriptionEngine {
 
     func transcribe(samples: [Float], language: TranscriptionLanguage) async throws -> Transcript {
         guard let pipeline else { throw TranscriptionError.modelNotLoaded }
+        let samples = AudioPadding.padded(samples)
 
         var options = DecodingOptions()
         options.task = .transcribe
@@ -90,7 +93,7 @@ actor WhisperKitEngine: TranscriptionEngine {
                 .joined(separator: " ")
             let elapsed = Date().timeIntervalSince(started)
             log.info("Transcribed \(samples.count / 16_000, privacy: .public) s of audio in \(elapsed, privacy: .public) s")
-            return Transcript(text: text, processingTime: elapsed)
+            return Transcript(text: text, language: results.first?.language, processingTime: elapsed)
         } catch {
             throw TranscriptionError.failed(underlying: error)
         }

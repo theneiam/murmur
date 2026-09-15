@@ -32,8 +32,11 @@ settings:
     CODE_SIGN_STYLE: Automatic
     ENABLE_HARDENED_RUNTIME: YES
     ENABLE_USER_SCRIPT_SANDBOXING: NO
-    MARKETING_VERSION: "1.2.0"
+    MARKETING_VERSION: "1.3.0"
     CURRENT_PROJECT_VERSION: "1"
+    DEVELOPMENT_LANGUAGE: en
+    LOCALIZATION_PREFERS_STRING_CATALOGS: YES
+    SWIFT_EMIT_LOC_STRINGS: YES
   configs:
     Debug:
       ONLY_ACTIVE_ARCH: YES
@@ -124,6 +127,8 @@ schemes:
       config: Debug
     test:
       config: Debug
+      environmentVariables:
+        MURMUR_RUNNING_TESTS: "1"
       targets:
         - MurmurTests
     archive:

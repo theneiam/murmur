@@ -25,6 +25,9 @@ enum HotkeyError: LocalizedError {
 struct TapState: Equatable {
     enum Event: Equatable {
         case press
+        case verbatimPress
+        case pasteLast
+        case copyLast
         case release
         /// Modifier-only hotkeys: another key was typed while the modifier was
         /// held (the user is using a shortcut, not dictating).
@@ -42,6 +45,12 @@ struct TapState: Equatable {
     var isDown = false
     var cancelled = false
     var capture: Capture?
+    var pasteLastHotkey: Hotkey? = .pasteLastDefault
+    var copyLastHotkey: Hotkey?
+    var verbatimHotkey: Hotkey?
+    var cancellationEnabled = false
+    private var swallowedActionKeys: Set<UInt16> = []
+    private var activeHotkey: Hotkey?
 
     init(hotkey: Hotkey) {
         self.hotkey = hotkey
@@ -55,6 +64,8 @@ struct TapState: Equatable {
         let events: [Event] = isDown && !cancelled ? [.cancel] : []
         isDown = false
         cancelled = false
+        swallowedActionKeys.removeAll()
+        activeHotkey = nil
         return events
     }
 
@@ -71,16 +82,58 @@ struct TapState: Equatable {
     }
 
     mutating func handle(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) -> (swallow: Bool, events: [Event]) {
+        if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            return (false, reset())
+        }
         if capture != nil {
             return handleCapture(type: type, keyCode: keyCode, flags: flags)
         }
-        if hotkey.isModifierOnly {
-            return (false, handleModifierOnly(type: type, keyCode: keyCode, flags: flags))
+        if swallowedActionKeys.contains(keyCode) {
+            if type == .keyUp { swallowedActionKeys.remove(keyCode) }
+            if type == .keyDown || type == .keyUp { return (true, []) }
         }
-        return handleKeyHotkey(type: type, keyCode: keyCode, flags: flags)
+        if type == .keyDown {
+            if keyCode == UInt16(kVK_Escape), flags.rawValue & Hotkey.modifierMask == 0,
+               cancellationEnabled || isDown {
+                _ = reset()
+                swallowedActionKeys.insert(keyCode)
+                return (true, [.cancel])
+            }
+            if let recovery = recoveryEvent(keyCode: keyCode, flags: flags) {
+                swallowedActionKeys.insert(keyCode)
+                return (true, [recovery])
+            }
+        }
+        let selected: Hotkey
+        if let activeHotkey {
+            selected = activeHotkey
+        } else if let verbatimHotkey, verbatimHotkey != hotkey,
+                  (verbatimHotkey.isModifierOnly && type == .flagsChanged && verbatimHotkey.isModifierChordActive(flags: flags))
+                  || (!verbatimHotkey.isModifierOnly && type == .keyDown && verbatimHotkey.matches(keyCode: keyCode, flags: flags)) {
+            selected = verbatimHotkey
+        } else {
+            selected = hotkey
+        }
+        var result = selected.isModifierOnly
+            ? (swallow: false, events: handleModifierOnly(type: type, keyCode: keyCode, flags: flags, hotkey: selected))
+            : handleKeyHotkey(type: type, keyCode: keyCode, flags: flags, hotkey: selected)
+        if result.events.contains(.press) {
+            activeHotkey = selected
+            if selected != hotkey { result.events = [.verbatimPress] }
+        }
+        if !isDown { activeHotkey = nil }
+        return result
     }
 
-    private mutating func handleKeyHotkey(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) -> (swallow: Bool, events: [Event]) {
+    private func recoveryEvent(keyCode: UInt16, flags: CGEventFlags) -> Event? {
+        if let pasteLastHotkey, pasteLastHotkey != hotkey, pasteLastHotkey != verbatimHotkey, !pasteLastHotkey.isModifierOnly,
+           pasteLastHotkey.matches(keyCode: keyCode, flags: flags) { return .pasteLast }
+        if let copyLastHotkey, copyLastHotkey != hotkey, copyLastHotkey != verbatimHotkey, !copyLastHotkey.isModifierOnly,
+           copyLastHotkey.matches(keyCode: keyCode, flags: flags) { return .copyLast }
+        return nil
+    }
+
+    private mutating func handleKeyHotkey(type: CGEventType, keyCode: UInt16, flags: CGEventFlags, hotkey: Hotkey) -> (swallow: Bool, events: [Event]) {
         switch type {
         case .keyDown:
             if !isDown {
@@ -100,7 +153,7 @@ struct TapState: Equatable {
         }
     }
 
-    private mutating func handleModifierOnly(type: CGEventType, keyCode: UInt16, flags: CGEventFlags) -> [Event] {
+    private mutating func handleModifierOnly(type: CGEventType, keyCode: UInt16, flags: CGEventFlags, hotkey: Hotkey) -> [Event] {
         switch type {
         case .flagsChanged:
             let active = hotkey.isModifierChordActive(flags: flags)
@@ -191,7 +244,36 @@ final class HotkeyManager: @unchecked Sendable {
         set { deliver(state.withLock { $0.setHotkey(newValue) }) }
     }
 
+    var pasteLastHotkey: Hotkey? {
+        get { state.withLock { $0.pasteLastHotkey } }
+        set { state.withLock { $0.pasteLastHotkey = newValue } }
+    }
+
+    var copyLastHotkey: Hotkey? {
+        get { state.withLock { $0.copyLastHotkey } }
+        set { state.withLock { $0.copyLastHotkey = newValue } }
+    }
+
+    var verbatimHotkey: Hotkey? {
+        get { state.withLock { $0.verbatimHotkey } }
+        set {
+            deliver(state.withLock { state in
+                guard state.verbatimHotkey != newValue else { return [] }
+                state.verbatimHotkey = newValue
+                return state.reset()
+            })
+        }
+    }
+
+    var cancellationEnabled: Bool {
+        get { state.withLock { $0.cancellationEnabled } }
+        set { state.withLock { $0.cancellationEnabled = newValue } }
+    }
+
     var onPress: (() -> Void)?
+    var onVerbatimPress: (() -> Void)?
+    var onPasteLast: (() -> Void)?
+    var onCopyLast: (() -> Void)?
     var onRelease: (() -> Void)?
     var onCancel: (() -> Void)?
 
@@ -302,6 +384,7 @@ final class HotkeyManager: @unchecked Sendable {
     private func handle(type: CGEventType, event: CGEvent) -> Bool {
         switch type {
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            deliver(state.withLock { $0.handle(type: type, keyCode: 0, flags: []).events })
             if let tap = tapPort.withLock({ $0 }) { CGEvent.tapEnable(tap: tap, enable: true) }
             log.warning("Event tap was disabled by the system; re-enabled")
             return false
@@ -335,6 +418,9 @@ final class HotkeyManager: @unchecked Sendable {
     private func dispatch(_ event: TapState.Event) {
         switch event {
         case .press: onPress?()
+        case .verbatimPress: onVerbatimPress?()
+        case .pasteLast: onPasteLast?()
+        case .copyLast: onCopyLast?()
         case .release: onRelease?()
         case .cancel: onCancel?()
         case let .captured(hotkey):

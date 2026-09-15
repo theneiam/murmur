@@ -41,6 +41,28 @@ final class ModelManager: ObservableObject {
     /// request can tell whether its model is still wanted.
     private var latestRequested: WhisperModel?
     private var downloadTasks: [WhisperModel: Task<Void, Never>] = [:]
+    @Published private(set) var isInUse = false
+    private var leasedModel: WhisperModel?
+    private var deferredModel: WhisperModel?
+
+    /// A recording owns the engine until inference has physically finished,
+    /// even when its UI has already been cancelled or timed out.
+    func beginUse(of model: WhisperModel) -> Bool {
+        guard !isInUse, isDownloaded(model) else { return false }
+        isInUse = true
+        leasedModel = model
+        activate(model)
+        return true
+    }
+
+    func endUse() {
+        leasedModel = nil
+        isInUse = false
+        if let next = deferredModel {
+            deferredModel = nil
+            activate(next)
+        }
+    }
 
     init(engine: any TranscriptionEngine = WhisperKitEngine(), rootDirectory: URL? = nil) {
         self.engine = engine
@@ -72,8 +94,11 @@ final class ModelManager: ObservableObject {
     /// The compiled CoreML models every WhisperKit bundle ships with. The Hub
     /// client downloads them one file at a time, so an interrupted download
     /// can leave the encoder in place with no decoder yet.
-    static let requiredModelDirectories = ["MelSpectrogram.mlmodelc", "AudioEncoder.mlmodelc", "TextDecoder.mlmodelc"]
-    static let requiredFiles = ["config.json"]
+    nonisolated static var requiredModelDirectories: [String] {
+        ["MelSpectrogram.mlmodelc", "AudioEncoder.mlmodelc", "TextDecoder.mlmodelc"]
+    }
+
+    nonisolated static var requiredFiles: [String] { ["config.json"] }
 
     /// `true` when `folder` holds a loadable bundle: each compiled model
     /// directory exists and contains its `coremldata.bin`, and the config is
@@ -223,6 +248,7 @@ final class ModelManager: ObservableObject {
     }
 
     func delete(_ model: WhisperModel) async {
+        guard !isInUse else { return }
         // Join the load queue so we never pull the files out from under a
         // load that is still in flight (and drop any queued activation).
         loadGeneration += 1
@@ -247,6 +273,11 @@ final class ModelManager: ObservableObject {
     /// one before it, and requests that were superseded while waiting are
     /// dropped so A → B → C only ever loads A then C.
     func activate(_ model: WhisperModel) {
+        if let leasedModel, leasedModel != model {
+            deferredModel = model
+            return
+        }
+        deferredModel = nil
         guard isDownloaded(model) else {
             statuses[model] = .notDownloaded
             return
@@ -294,6 +325,7 @@ final class ModelManager: ObservableObject {
     /// Drops the warm model to free memory (≈0.5–1.5 GB). Files stay on
     /// disk; `activate` brings it back. No-op while a load is queued.
     func unloadForIdle() async {
+        guard !isInUse else { return }
         guard let active = activeModel, status(of: active) == .ready else { return }
         loadGeneration += 1
         await loadTask?.value

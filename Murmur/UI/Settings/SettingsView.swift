@@ -1,4 +1,3 @@
-import CoreAudio
 import ServiceManagement
 import SwiftUI
 
@@ -9,15 +8,17 @@ struct SettingsView: View {
                 .tabItem { Label("General", systemImage: "gearshape") }
             HotkeySettingsView()
                 .tabItem { Label("Hotkey", systemImage: "keyboard") }
-            AudioSettingsView()
+            AudioPreferencesView()
                 .tabItem { Label("Audio", systemImage: "mic") }
             ModelSettingsView()
                 .tabItem { Label("Model", systemImage: "cpu") }
-            TextSettingsView()
+            TextToolsSettingsView()
                 .tabItem { Label("Text", systemImage: "textformat") }
+            AppProfilesSettingsView()
+                .tabItem { Label("Apps", systemImage: "app.badge") }
         }
-        .frame(width: 560)
-        .frame(minHeight: 420)
+        .frame(width: 620)
+        .frame(minHeight: 480)
     }
 }
 
@@ -174,11 +175,46 @@ struct HotkeySettingsView: View {
         Form {
             Section("Push-to-talk key") {
                 HotkeyRecorderView(
+                    label: "Push to talk",
                     hotkey: $settings.hotkey,
                     manager: appState.hotkeys,
-                    isEnabled: appState.hotkeyError == nil && permissions.accessibility
+                    isEnabled: appState.hotkeyError == nil && permissions.accessibility,
+                    disallowed: [settings.pasteLastHotkey, settings.copyLastHotkey, settings.verbatimHotkey].compactMap { $0 }
                 )
                 Text("Hold this key or combination to record; release to transcribe. Single modifier keys work too — right ⌥ and fn are popular choices. If you pick fn, set System Settings → Keyboard → “Press 🌐 key to” to “Do Nothing”.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Recovery shortcuts") {
+                OptionalHotkeyRecorderView(
+                    label: "Paste last transcript",
+                    hotkey: $settings.pasteLastHotkey,
+                    manager: appState.hotkeys,
+                    isEnabled: appState.hotkeyError == nil && permissions.accessibility,
+                    disallowed: [settings.hotkey, settings.copyLastHotkey, settings.verbatimHotkey].compactMap { $0 }
+                )
+                OptionalHotkeyRecorderView(
+                    label: "Copy last transcript",
+                    hotkey: $settings.copyLastHotkey,
+                    manager: appState.hotkeys,
+                    isEnabled: appState.hotkeyError == nil && permissions.accessibility,
+                    disallowed: [settings.hotkey, settings.pasteLastHotkey, settings.verbatimHotkey].compactMap { $0 }
+                )
+                Text("Paste last is enabled by default as ⌃⌘V. Copy is optional. Both use only the most recent in-memory transcript.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("Verbatim shortcut") {
+                OptionalHotkeyRecorderView(
+                    label: "Hold for verbatim",
+                    hotkey: $settings.verbatimHotkey,
+                    manager: appState.hotkeys,
+                    isEnabled: appState.hotkeyError == nil && permissions.accessibility,
+                    disallowed: [settings.hotkey, settings.pasteLastHotkey, settings.copyLastHotkey].compactMap { $0 }
+                )
+                Text("This second push-to-talk shortcut bypasses cleanup, corrections, snippets, and spoken commands for one dictation.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -202,36 +238,53 @@ struct HotkeySettingsView: View {
 /// event tap as push-to-talk, so modifier-only keys and left/right variants
 /// are recorded exactly as they will later be matched.
 struct HotkeyRecorderView: View {
+    var label = "Hotkey"
     @Binding var hotkey: Hotkey
     let manager: HotkeyManager
     /// Driven by observable state in the caller (`HotkeyManager` itself is
     /// not observable), so the button re-enables once Accessibility is granted.
     var isEnabled: Bool
+    var disallowed: [Hotkey] = []
 
     @State private var isRecording = false
+    @State private var conflict = false
 
     var body: some View {
-        HStack {
-            Text("Hotkey")
-            Spacer()
-            Button {
-                if isRecording {
-                    manager.cancelCapture()
-                    isRecording = false
-                } else {
-                    isRecording = true
-                    manager.beginCapture { captured in
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(label)
+                Spacer()
+                Button {
+                    if isRecording {
+                        manager.cancelCapture()
                         isRecording = false
-                        if let captured { hotkey = captured }
+                    } else {
+                        isRecording = true
+                        manager.beginCapture { captured in
+                            isRecording = false
+                            if let captured {
+                                if disallowed.contains(captured) {
+                                    conflict = true
+                                } else {
+                                    hotkey = captured
+                                    conflict = false
+                                }
+                            }
+                        }
                     }
+                } label: {
+                    Text(isRecording ? "Press a key or modifier… (⎋ to cancel)" : hotkey.displayString)
+                        .frame(minWidth: 200)
+                        .foregroundStyle(isRecording ? .secondary : .primary)
                 }
-            } label: {
-                Text(isRecording ? "Press a key or modifier… (⎋ to cancel)" : hotkey.displayString)
-                    .frame(minWidth: 200)
-                    .foregroundStyle(isRecording ? .secondary : .primary)
+                .buttonStyle(.bordered)
+                .disabled(!isEnabled)
             }
-            .buttonStyle(.bordered)
-            .disabled(!isEnabled)
+            if conflict {
+                Text("That shortcut is already assigned to another Murmur action.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
         }
         .onDisappear {
             if isRecording { manager.cancelCapture() }
@@ -239,44 +292,59 @@ struct HotkeyRecorderView: View {
     }
 }
 
-// MARK: - Audio
+struct OptionalHotkeyRecorderView: View {
+    let label: String
+    @Binding var hotkey: Hotkey?
+    let manager: HotkeyManager
+    var isEnabled: Bool
+    var disallowed: [Hotkey] = []
 
-struct AudioSettingsView: View {
-    @EnvironmentObject private var settings: SettingsStore
-    @State private var devices: [AudioInputDevice] = []
-    @State private var effectiveIsBluetooth = false
+    @State private var isRecording = false
+    @State private var conflict = false
 
     var body: some View {
-        Form {
-            Section("Input device") {
-                Picker("Microphone", selection: $settings.inputDeviceUID) {
-                    Text("System default").tag(String?.none)
-                    ForEach(devices) { device in
-                        Text(device.name).tag(String?.some(device.uid))
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(label)
+                Spacer()
+                Button {
+                    if isRecording {
+                        manager.cancelCapture()
+                        isRecording = false
+                    } else {
+                        isRecording = true
+                        manager.beginCapture { captured in
+                            isRecording = false
+                            guard let captured else { return }
+                            if disallowed.contains(captured) {
+                                conflict = true
+                            } else {
+                                hotkey = captured
+                                conflict = false
+                            }
+                        }
+                    }
+                } label: {
+                    Text(isRecording ? "Press a key… (⎋ to cancel)" : hotkey?.displayString ?? "Set Shortcut…")
+                        .frame(minWidth: 180)
+                }
+                .disabled(!isEnabled)
+                if hotkey != nil {
+                    Button("Clear") {
+                        hotkey = nil
+                        conflict = false
                     }
                 }
-                .onChange(of: settings.inputDeviceUID) { _, _ in refresh() }
-                if let uid = settings.inputDeviceUID, !devices.contains(where: { $0.uid == uid }) {
-                    Text("The selected device is not connected; the system default will be used until it returns.")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                }
-                if effectiveIsBluetooth {
-                    Label("This is a Bluetooth headset. Its microphone takes about a second to switch on, so the start of each dictation may be cut, and playback quality drops while recording. The built-in microphone is usually the better choice for dictation.", systemImage: "wave.3.right")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Button("Refresh devices") { refresh() }
+            }
+            if conflict {
+                Text("That shortcut is already assigned to another Murmur action.")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
             }
         }
-        .formStyle(.grouped)
-        .onAppear { refresh() }
-    }
-
-    private func refresh() {
-        devices = AudioDevices.inputDevices()
-        let effectiveID: AudioDeviceID? = settings.inputDeviceUID.flatMap(AudioDevices.deviceID(forUID:)) ?? AudioDevices.defaultInputDeviceID()
-        effectiveIsBluetooth = effectiveID.map(AudioDevices.isBluetooth) ?? false
+        .onDisappear {
+            if isRecording { manager.cancelCapture() }
+        }
     }
 }
 
@@ -299,6 +367,7 @@ struct ModelSettingsView: View {
                                     .foregroundStyle(Color.accentColor)
                             }
                             .buttonStyle(.plain)
+                            .disabled(models.isInUse)
                             Text(model.displayName).font(.headline)
                             Text(model.approximateSizeDescription)
                                 .foregroundStyle(.secondary)
@@ -306,6 +375,7 @@ struct ModelSettingsView: View {
                             if models.isDownloaded(model), !models.status(of: model).isBusy {
                                 Button("Delete") { Task { await models.delete(model) } }
                                     .controlSize(.small)
+                                    .disabled(models.isInUse)
                             }
                         }
                         Text(model.speedDescription).font(.caption)
@@ -348,55 +418,5 @@ struct ModelSettingsView: View {
         }
         .formStyle(.grouped)
         .onAppear { models.refreshStatuses() }
-    }
-}
-
-// MARK: - Text post-processing
-
-struct TextSettingsView: View {
-    @EnvironmentObject private var settings: SettingsStore
-
-    var body: some View {
-        Form {
-            Section("Clean-up") {
-                Toggle("Capitalize the start of sentences", isOn: $settings.postProcessing.autoCapitalize)
-                Toggle("Add a space after each dictation", isOn: $settings.postProcessing.appendTrailingSpace)
-                Toggle("Remove filler words (um, uh, э, эм…)", isOn: $settings.postProcessing.stripFillerWords)
-            }
-
-            Section {
-                ForEach($settings.postProcessing.replacements) { $replacement in
-                    HStack {
-                        TextField("Heard as…", text: $replacement.find)
-                        Image(systemName: "arrow.right").foregroundStyle(.secondary)
-                        TextField("Insert…", text: $replacement.replace)
-                        Toggle("Aa", isOn: $replacement.caseSensitive)
-                            .toggleStyle(.button)
-                            .help("Case-sensitive")
-                        Button {
-                            // Defer: mutating the collection from inside a
-                            // row that is bound into it can crash the ForEach.
-                            let id = replacement.id
-                            DispatchQueue.main.async {
-                                settings.postProcessing.replacements.removeAll { $0.id == id }
-                            }
-                        } label: {
-                            Image(systemName: "minus.circle")
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                Button {
-                    settings.postProcessing.replacements.append(Replacement(find: "", replace: ""))
-                } label: {
-                    Label("Add replacement", systemImage: "plus")
-                }
-            } header: {
-                Text("Dictionary")
-            } footer: {
-                Text("Whole-word replacements applied after transcription — handy for names, product terms and jargon the model tends to mishear (e.g. “not alone” → “NotAlone”).")
-            }
-        }
-        .formStyle(.grouped)
     }
 }

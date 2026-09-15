@@ -28,11 +28,17 @@ instances would both install a global event tap.
 xcodebuild test -project Murmur.xcodeproj -scheme Murmur -destination 'platform=macOS'
 ```
 
-Tests are hosted in the app but the app skips all start-up work under XCTest,
+Full automated and manual verification instructions are in
+[docs/TESTING.md](docs/TESTING.md). Tests are hosted in the app but the app
+skips all start-up work under XCTest,
 so they run fine next to your daily Murmur. The push-to-talk pipeline
 (`DictationSession`) is tested through its four seams with fakes; new
 pipeline behaviour goes there, with a test. Pure logic (`TapState`,
 `TextPostProcessor`, `Hotkey`, settings decoding) is tested directly.
+
+User-facing strings belong in the Xcode String Catalog. See
+[docs/LOCALIZATION.md](docs/LOCALIZATION.md) before adding translations or
+changing localized interpolation and plural forms.
 
 ## Style
 
@@ -45,9 +51,10 @@ warnings.
 
 - One change per PR, with the *why* in the description.
 - Add or update tests for behaviour changes.
-- Update `docs/ARCHITECTURE.md` and `CLAUDE.md` if you move responsibilities
-  between modules, and `CHANGELOG.md` under *Unreleased* for anything a user
-  would notice.
+- Update the single module map in `docs/ARCHITECTURE.md` when responsibilities
+  move, `CLAUDE.md` when commands/macOS gotchas change, and `CHANGELOG.md` under
+  *Unreleased* for anything a user would notice. Keep work status and manual
+  verification gaps in `docs/ROADMAP.md`.
 - CI (build, tests, format lint) must be green.
 
 ## Dependencies
@@ -71,9 +78,29 @@ questions first, not merged as features:
 - No Dock icon, no window that steals focus while dictating.
 - Text goes into other apps; Murmur has no editor of its own.
 
+## Extending models or the backend
+
+The model picker iterates `WhisperModel.allCases`. Add a catalog case using
+an exact Hugging Face variant and supply its display, size and first-load
+metadata. Check language compatibility before exposing an English-only model.
+Do not describe relative accuracy or latency as measured without a matching
+[benchmark](docs/BENCHMARKS.md).
+
+The dated `openai_whisper-large-v3-v20240930` checkpoint is OpenAI's
+large-v3-turbo; `_turbo` in some other variant names means an encoder compute
+optimization. See the naming and loading gotchas in CLAUDE.md before changing
+WhisperKit configuration. Alternative inference backends implement
+`TranscriptionEngine`; preserve cancellation/lease semantics and fake-backed
+pipeline tests rather than branching the session by backend.
+
+To experiment with a bundled model, use a bundle folder reference and resolve
+it in `ModelManager.folder(for:)`, while accounting for the separate tokenizer
+cache. Do not claim a self-contained offline installer merely because model
+weights were copied into the app. Verify first-run behavior without a network.
+
 ## Releasing (maintainers)
 
-`scripts/release.sh` archives, signs with Developer ID, notarizes and staples
-the app and the DMG. See README → *Signing, notarization, DMG*. Bump
-`MARKETING_VERSION` in `project.yml`, move the *Unreleased* changelog section
-under the new version, tag `vX.Y.Z`, publish the DMG as a GitHub release.
+[docs/RELEASING.md](docs/RELEASING.md) is the single release runbook. It covers
+signing credentials, a clean source checkout, commit/artifact linkage,
+notarization and the exact-commit CI gate before explicitly authorized
+publication. Do not bypass these gates because an admin push is permitted.

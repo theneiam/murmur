@@ -2,7 +2,17 @@ import Foundation
 
 struct Transcript {
     let text: String
+    /// ISO 639-1 code the model decoded with. Worth surfacing when the
+    /// language is auto-detected: a mis-detection and a mis-hearing look
+    /// identical to the user otherwise.
+    let language: String?
     let processingTime: TimeInterval
+
+    init(text: String, language: String? = nil, processingTime: TimeInterval) {
+        self.text = text
+        self.language = language
+        self.processingTime = processingTime
+    }
 }
 
 enum TranscriptionError: LocalizedError {
@@ -16,7 +26,7 @@ enum TranscriptionError: LocalizedError {
         case .modelNotLoaded:
             return "No speech model is loaded yet."
         case .timedOut:
-            return "Transcription took too long and was cancelled."
+            return "Transcription took too long. No text was inserted. The model may still be stopping."
         case let .modelFolderMissing(model):
             return "The \(model.displayName) model files are missing. Download it again from Settings."
         case let .failed(underlying):

@@ -1,8 +1,8 @@
 # Murmur — operational notes for coding agents
 
-Murmur is a menu-bar, push-to-talk dictation app for macOS 14+ / Apple Silicon. Hold a hotkey → record → release → transcribe locally with WhisperKit → insert text at the cursor in the frontmost app. Shipping since 1.0.0 (2026-09-08), current release 1.2.0, in daily use by the owner.
+Murmur is a menu-bar, push-to-talk dictation app for macOS 14+ / Apple Silicon. Hold a hotkey → record → release → transcribe locally with WhisperKit → insert text at the cursor in the frontmost app. In daily use by the owner; see CHANGELOG.md for shipped and pending changes.
 
-**This file is the cheat-sheet: commands, gotchas, module map, constraints.** For a cold start — project state, environment prerequisites, release runbook, working agreements, decision history — read [AGENTS.md](AGENTS.md) first. Human contributor docs: [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [README.md](README.md).
+**This file is the cheat-sheet: commands and macOS gotchas.** For a cold start and the documentation map, read [AGENTS.md](AGENTS.md) first. Human contributor docs: [CONTRIBUTING.md](CONTRIBUTING.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [README.md](README.md).
 
 ## Build, test, run
 
@@ -16,7 +16,7 @@ log stream --predicate 'subsystem == "com.yevhen.murmur"' --level debug
 
 Signing for local builds comes from the git-ignored `Config/Local.xcconfig` (copy `Config/Local.xcconfig.example`, add `DEVELOPMENT_TEAM`). Without it the build is ad-hoc signed and still runs, but macOS re-asks for permissions after every rebuild.
 
-Release: `TEAM_ID=… NOTARY_PROFILE=… scripts/release.sh` → `build/release/Murmur-<version>.dmg`, notarized and stapled. Full runbook in AGENTS.md.
+Release: `TEAM_ID=… NOTARY_PROFILE=… scripts/release.sh` → `build/release/Murmur-<version>.dmg`, notarized and stapled. Full runbook and publication gates in [docs/RELEASING.md](docs/RELEASING.md).
 
 **Quit any running Murmur before launching a new build** — two instances would both install event taps. The test host is exempt: `AppDelegate` skips all start-up work under XCTest.
 
@@ -32,53 +32,44 @@ Release: `TEAM_ID=… NOTARY_PROFILE=… scripts/release.sh` → `build/release/
 - **Secure Keyboard Entry** (Terminal, password fields) hides keyboard events from every event tap, so the hotkey silently does nothing there. Expected, not a bug.
 - Not sandboxed on purpose: global event taps and AX writes into other apps require it. Hardened runtime on; the only entitlement is `audio-input`.
 - WhisperKit lives in the renamed package `argmax-oss-swift` (product `WhisperKit`; `import WhisperKit` re-exports `ArgmaxCore`), pinned to an **exact** version because `Package.resolved` sits inside the git-ignored `.xcodeproj`. Do **not** add the `ArgmaxOSS` umbrella product — it pulls in TTSKit, which requires macOS 15. Dependabot does not cover it (no `Package.swift`); bump by hand.
+- **WhisperKit decodes nothing at or below 1.0 s of audio** (its loop needs strictly more than 16 000 frames), while Murmur's own floor is 0.3 s. `AudioPadding.padded` pads short utterances with silence past that boundary; without it every quick "да" / "ok" came back empty and looked like a mis-hearing. Padding is free — the mel window is zero-padded to 30 s anyway.
+- **Never pass `prewarm: true` alongside `load: true`** to `WhisperKitConfig`: they are two separate passes, so all three CoreML models get loaded and thrown away before being loaded again.
 - WhisperKit model naming trap: OpenAI's large-v3-*turbo* checkpoint is `openai_whisper-large-v3-v20240930[_626MB]`. The `_turbo` suffix on other variants means an encoder compute optimisation, not the turbo model.
 - Model files: `~/Library/Application Support/Murmur/Models/models/argmaxinc/whisperkit-coreml/<variant>/`. The tokenizer is fetched from `openai/whisper-*` on first load of each model and cached under `Models/tokenizers/`; offline afterwards. First load also triggers CoreML/ANE compilation (seconds for Small, minutes for larger).
 - Swift 5.10 language mode, `SWIFT_STRICT_CONCURRENCY=minimal`. Closures handed to AppKit completion handlers are `@Sendable` — use `MainActor.assumeIsolated { }` inside rather than touching main-actor state directly (see `StatusPanel.orderOut`). `os.Logger` messages are autoclosures and need explicit `self.`, which is why SwiftFormat's `redundantSelf` rule is disabled.
 - `UCKeyTranslate` takes plain `Int` lengths in Swift; `UniCharCount` is not exposed.
-- Settings are JSON blobs in UserDefaults (`murmur.*` keys), 15 of them. Any struct stored there needs a tolerant `init(from:)` with `decodeIfPresent` (see `PostProcessingOptions`) so adding a field never wipes a user's settings. Same rule for `Statistics.json`.
+- Settings are JSON blobs in UserDefaults (`murmur.*` keys). Any struct stored there needs a tolerant `init(from:)` with `decodeIfPresent` (see `PostProcessingOptions`) so adding a field never wipes a user's settings. Same rule for `Statistics.json`.
 
-## Module map
+## Where to work
 
-| Area | Files | Role |
-|---|---|---|
-| Composition root | `App/AppState.swift` (~280 lines) | Singleton `AppState.shared`; constructs every subsystem, wires hotkey → `DictationSession`, owns app-level policy: permissions → hotkey listener, model activation on settings change, idle model unload, status-panel refresh, `statusText`, window opening, routing `DictationEvent`s to stats |
-| App shell | `App/MurmurApp.swift` | `MenuBarExtra` + `Settings` scenes, `murmurEnvironment` injection helper, `AppDelegate` (accessory policy, XCTest bail-out, first-run onboarding, stats flush on quit) |
-| Dictation | `Dictation/DictationSession.swift`, `Dictation/DictationSeams.swift` | The push-to-talk pipeline (`idle → starting → recording → transcribing → inserting`), 90 s transcription timeout, post-processing, insertion, sample insertion. Depends **only** on the seams `AudioCapturing`, `ModelProviding`, `TextInserting`, `DictationPresenting` plus a `DictationConfig` snapshot; reports through published state and `DictationEvent`. **New pipeline behaviour goes here with a test, never in AppState.** |
-| Hotkey | `Hotkey/Hotkey.swift`, `Hotkey/HotkeyManager.swift` | `Hotkey` value + matching + display names; `HotkeyManager` owns the tap thread; `TapState` is the pure, fully-tested state machine |
-| Audio | `Audio/AudioRecorder.swift`, `Audio/AudioDevices.swift` | AVAudioEngine → 16 kHz mono Float32, level meter, max-duration auto-stop, engine restart on reconfiguration, Bluetooth detection; CoreAudio device list |
-| Speech | `Transcription/*` | `WhisperModel`/`TranscriptionLanguage` catalog, `TranscriptionEngine` protocol, `WhisperKitEngine` actor (one warm pipeline), `ModelManager` (download with free-space check + cancel, serialized loads, `ModelAvailability`, idle unload) |
-| Insertion | `Insertion/*` | `StrategyInserter` (the `TextInserting` adapter) composes two `TextWriting` adapters: `AccessibilityWriter` (AX selected-text write, verified) and `PasteboardWriter` (⌘V + clipboard snapshot/restore, marked transient) |
-| Text | `PostProcessing/TextPostProcessor.swift` | Pure `process(text, options)`: capitalisation, filler stripping, replacement dictionary, trailing space |
-| Status panel | `UI/StatusPanel/*` | The floating pill. One `render(PanelState)` interface, `mode` transient/persistent, `idle` content, draggable `PanelAnchor` persisted in settings, brand gradient accents. It is the `DictationPresenting` adapter |
-| Stats | `Stats/*`, `UI/StatsWindow.swift` | `DictationOutcome` (from `DictationEvent.inserted`) folded into one `DailyStats` row per local day in `~/Library/Application Support/Murmur/Statistics.json` (atomic, debounced 2 s, flushed on quit, tolerant decode, corrupt file quarantined). `StatsSummary.make` is pure. **Never stores text.** |
-| Other UI | `UI/MenuBarView.swift`, `UI/OnboardingView.swift`, `UI/Settings/SettingsView.swift` | Menu (status, last transcript, model/language, stats line, Statistics…, Help); first-run permissions + model download; 5-tab settings |
-| Support | `Permissions/`, `Settings/`, `Support/*` | Permission polling (interval multiset), persisted settings, About panel with third-party credits, outbound URL constants, diagnostics report (OSLogStore, last hour), `Logger.murmur(category)`, start/stop cues, synthetic-event tag |
+The single [module and seam map](docs/ARCHITECTURE.md) identifies ownership.
+Put pipeline behavior in `DictationSession`, pure decisions in their owning
+module, and OS calls in thin adapters. Read [docs/TESTING.md](docs/TESTING.md)
+for automated and manual coverage, and [docs/ROADMAP.md](docs/ROADMAP.md) for
+open work. Test counts and release versions are deliberately not duplicated
+here; report the actual test result for each change.
 
-## Testing
+Recognition quality remains a measurement question. Compare the same real
+speech on the built-in microphone and AirPods before changing the model
+catalog. Follow [docs/BENCHMARKS.md](docs/BENCHMARKS.md); no published latency
+or accuracy baseline exists yet. The
+[formatting decision record](docs/adr/2026-09-12-local-formatting-decisions.md)
+preserves the earlier experiments without turning their missing artifacts
+into a reason to repeat them.
 
-123 tests, all pure or fake-backed, no hardware or permissions required. `AppDelegate` skips start-up work under XCTest so they run safely next to a live Murmur.
+## Agent skills
 
-Well covered: `DictationSession` (19, via fakes for its four seams), `StatsStore`/`StatsSummary` (18), `TapState` (12), `TextPostProcessor` (12), `ModelManager` (13, via `FakeEngine` + temp dir), `StatusPanel` value types (11), `Hotkey` (9), settings decoding (7), `Recording` (6), model-bundle completeness (6), `StrategyInserter` (5).
+### Issue tracker
 
-Not covered, by design — verify these by hand: the AVAudioEngine adapter, real AX/pasteboard writes, the event tap itself, window appearance and the chart.
+Public issues use `theneiam/murmur` on GitHub. This review is tracked locally
+in `docs/ROADMAP.md`; see [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 
-**Rule:** put new logic behind a seam or in a pure function so it can be tested. If something can only be tested with hardware, keep it thin and push the decisions up.
+### Triage labels
 
-## Product constraints (don't drift)
+No triage-role labels are assumed or created. See
+[docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 
-- Push-to-talk **only** — no toggle/hands-free mode, no streaming/partial results.
-- No network at runtime except the user-initiated model download (and the one-time tokenizer fetch). No accounts, telemetry, or update checks. "Check for Updates…" and the Help links only open the browser.
-- No Dock icon (`LSUIElement`), no window that steals focus while dictating; the status panel is non-activating and never becomes key.
-- Text goes into other apps only; Murmur has no editor of its own.
-- Statistics stay local and text-free.
+### Domain docs
 
-## Open follow-ups
-
-- **Recognition quality** is the owner's live concern. Ranked suspects: the AirPods microphone (headset profile is narrowband — the built-in mic is markedly better), auto-detect language on short utterances, then the model variant. Untried options: adding uncompressed large-v3-turbo or full `openai_whisper-large-v3` to `ModelCatalog` (~10 lines each), and feeding a vocabulary hint into WhisperKit's decoder prompt to bias names and jargon.
-- **Insertion compatibility matrix** in README covers Notes, Mail, Gmail, Slack, Claude, Herdr. Unverified: Safari/Chrome forms, VS Code, Xcode, Terminal, Word, Google Docs. Use *Settings → General → Test insertion…*.
-- **Architecture candidates 4 and 6** from the 2026-09-09 review remain open and optional: settings as a `@Setting` property wrapper (removes ~40 lines of four-places-per-setting boilerplate), and putting AVAudioEngine behind a seam so the watchdog/restart policy is testable. Candidates 1, 2, 3, 5, 7 are done.
-- **Input-device override** logs "Input device set to …" or "Input device override did not stick" but has never been confirmed with an external mic on this machine.
-- **Latency** has never been measured against the ≤1 s target for a 10 s utterance on Medium.
-- **No localization hooks**: every user-facing string is an inline literal. A String Catalog is the modern route.
-- Icon is generated by `scripts/make_icon.py` (PIL); rerun and copy into `Murmur/Resources/Assets.xcassets/AppIcon.appiconset/`.
+Single-context Swift/macOS app; architecture and dated decisions are the
+current domain references. See [docs/agents/domain.md](docs/agents/domain.md).

@@ -14,6 +14,16 @@ final class RecordingTests: XCTestCase {
         XCTAssertFalse(Recording(samples: [], wallClockDuration: 0.05).isSilentCaptureFailure(minimumUtterance: minimum))
     }
 
+    func testNoBuffersAreNotMistakenForAMutedMicrophone() {
+        let tap = Recording(samples: [], wallClockDuration: 0.05, peakLevel: 0)
+        XCTAssertFalse(tap.hasNoAudibleSignal)
+        XCTAssertFalse(tap.isSilentCaptureFailure(minimumUtterance: minimum))
+
+        let failedCapture = Recording(samples: [], wallClockDuration: 2, peakLevel: 0)
+        XCTAssertFalse(failedCapture.hasNoAudibleSignal)
+        XCTAssertTrue(failedCapture.isSilentCaptureFailure(minimumUtterance: minimum))
+    }
+
     func testHeldKeyWithNoAudioIsAFailure() {
         // Engine ran for two seconds and the HAL never delivered a buffer.
         XCTAssertTrue(Recording(samples: [], wallClockDuration: 2.0).isSilentCaptureFailure(minimumUtterance: minimum))

@@ -9,6 +9,23 @@ struct AudioInputDevice: Identifiable, Hashable {
 
 /// Thin CoreAudio wrapper for enumerating input devices.
 enum AudioDevices {
+    /// Existing explicit selection takes priority. Disconnected preferences
+    /// remain in settings and become eligible again when they reconnect.
+    static func rankedInputs(explicitUID: String?, preferredUIDs: [String],
+                             available: [AudioInputDevice], defaultDeviceID: AudioDeviceID?) -> [AudioInputDevice] {
+        let uids = explicitUID.map { [$0] } ?? []
+        var ranked: [AudioInputDevice] = []
+        for uid in uids + preferredUIDs {
+            if let device = available.first(where: { $0.uid == uid }), !ranked.contains(device) {
+                ranked.append(device)
+            }
+        }
+        if let fallback = available.first(where: { $0.id == defaultDeviceID }), !ranked.contains(fallback) {
+            ranked.append(fallback)
+        }
+        return ranked
+    }
+
     static func inputDevices() -> [AudioInputDevice] {
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,

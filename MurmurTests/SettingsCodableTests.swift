@@ -50,11 +50,16 @@ final class SettingsCodableTests: XCTestCase {
     func testSettingsStoreStartsWithDefaults() {
         let store = SettingsStore(defaults: freshDefaults())
         XCTAssertEqual(store.hotkey, .default)
+        XCTAssertEqual(store.pasteLastHotkey, .pasteLastDefault)
+        XCTAssertNil(store.copyLastHotkey)
+        XCTAssertNil(store.verbatimHotkey)
         XCTAssertEqual(store.model, .largeV3Turbo)
         XCTAssertEqual(store.language, .auto)
         XCTAssertEqual(store.insertionStrategy, .accessibilityThenPasteboard)
         XCTAssertEqual(store.maxRecordingSeconds, 120)
         XCTAssertNil(store.inputDeviceUID)
+        XCTAssertEqual(store.preferredInputDeviceUIDs, [])
+        XCTAssertEqual(store.appProfiles, [])
         XCTAssertTrue(store.playSounds)
         XCTAssertEqual(store.unloadAfterIdleMinutes, 30)
         XCTAssertTrue(store.collectStatistics)
@@ -69,17 +74,32 @@ final class SettingsCodableTests: XCTestCase {
         store.model = .small
         store.language = .russian
         store.inputDeviceUID = "BuiltInMic"
+        store.preferredInputDeviceUIDs = ["StudioMic", "BuiltInMic"]
+        store.copyLastHotkey = Hotkey(keyCode: 8, modifiers: 1 << 20, isModifierOnly: false)
+        store.verbatimHotkey = Hotkey(keyCode: 9, modifiers: 1 << 20, isModifierOnly: false)
         store.maxRecordingSeconds = 45
         store.hasCompletedOnboarding = true
         store.postProcessing.replacements = [Replacement(find: "a", replace: "b")]
+        store.appProfiles = [AppProfile(
+            bundleIdentifier: "com.example.Editor",
+            displayName: "Editor",
+            language: .russian,
+            insertionStrategy: .accessibilityOnly,
+            postProcessing: store.postProcessing,
+            newlinePreference: .preserve
+        )]
 
         let reloaded = SettingsStore(defaults: defaults)
         XCTAssertEqual(reloaded.model, .small)
         XCTAssertEqual(reloaded.language, .russian)
         XCTAssertEqual(reloaded.inputDeviceUID, "BuiltInMic")
+        XCTAssertEqual(reloaded.preferredInputDeviceUIDs, ["StudioMic", "BuiltInMic"])
+        XCTAssertEqual(reloaded.copyLastHotkey, store.copyLastHotkey)
+        XCTAssertEqual(reloaded.verbatimHotkey, store.verbatimHotkey)
         XCTAssertEqual(reloaded.maxRecordingSeconds, 45)
         XCTAssertTrue(reloaded.hasCompletedOnboarding)
         XCTAssertEqual(reloaded.postProcessing.replacements.map(\.find), ["a"])
+        XCTAssertEqual(reloaded.appProfiles.first?.bundleIdentifier, "com.example.Editor")
     }
 
     @MainActor

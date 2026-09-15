@@ -1,6 +1,8 @@
 # Local statistics — design
 
-**Status:** approved in conversation 2026-09-11, pending implementation.
+**Status:** implemented and shipped in 1.2.0 (2026-09-12). This is the
+original design; current interfaces and storage are documented in
+[ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 ## Goal
 

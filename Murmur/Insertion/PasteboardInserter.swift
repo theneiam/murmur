@@ -16,39 +16,35 @@ enum PasteboardInserter {
     static var restoreDelay: Duration = .milliseconds(250)
 
     @MainActor
-    static func insert(_ text: String) async {
+    static func insert(_ text: String, validateDestination: () -> Bool) async -> Bool {
         let pasteboard = NSPasteboard.general
-        let snapshot = Snapshot(pasteboard)
 
         // If the push-to-talk modifier is still physically held (auto-stop at
         // the recording cap), wait for it to lift so ⌘V isn't seen as ⌘⌥V.
-        await waitForModifiersToLift()
+        guard await waitForModifiersToLift(), !Task.isCancelled, validateDestination() else { return false }
+        guard let temporary = TemporaryClipboard(text: text, pasteboard: pasteboard) else { return false }
 
-        let ourChangeCount = pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        // Tell clipboard managers (Maccy, Paste, Raycast, Alfred…) not to
-        // record this entry: it is restored a moment later and the user never
-        // asked for it in their history. De-facto standard from nspasteboard.org.
-        pasteboard.setString("", forType: .transient)
-
-        postCommandV()
+        let sent = postCommandV()
 
         try? await Task.sleep(for: restoreDelay)
-        snapshot.restore(to: pasteboard, ifChangeCountIs: ourChangeCount)
+        temporary.restore(to: pasteboard)
+        return sent
     }
 
-    private static func waitForModifiersToLift(timeout: Duration = .seconds(2)) async {
+    private static func waitForModifiersToLift(timeout: Duration = .seconds(2)) async -> Bool {
         let deadline = ContinuousClock.now + timeout
         while ContinuousClock.now < deadline {
             let flags = CGEventSource.flagsState(.combinedSessionState).rawValue & Hotkey.modifierMask
-            if flags == 0 { return }
+            if Task.isCancelled { return false }
+            if flags == 0 { return true }
             try? await Task.sleep(for: .milliseconds(30))
         }
+        return false
     }
 
     // MARK: Key synthesis
 
-    private static func postCommandV() {
+    private static func postCommandV() -> Bool {
         let source = CGEventSource(stateID: .combinedSessionState)
         let vKey = CGKeyCode(kVK_ANSI_V)
 
@@ -56,7 +52,7 @@ enum PasteboardInserter {
               let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
         else {
             log.error("Could not create ⌘V events")
-            return
+            return false
         }
         for event in [down, up] {
             event.flags = .maskCommand
@@ -64,43 +60,57 @@ enum PasteboardInserter {
         }
         down.post(tap: .cgSessionEventTap)
         up.post(tap: .cgSessionEventTap)
+        return true
+    }
+}
+
+/// Owns Murmur's temporary clipboard entry and the deep snapshot it replaced.
+/// The protected change count is captured after every Murmur write; capturing
+/// it after `clearContents()` would make restoration fail because each later
+/// `setString` increments the count again.
+struct TemporaryClipboard {
+    private let items: [[NSPasteboard.PasteboardType: Data]]
+    private let expectedChangeCount: Int
+
+    init?(text: String, pasteboard: NSPasteboard) {
+        items = (pasteboard.pasteboardItems ?? []).map { item in
+            var entries: [NSPasteboard.PasteboardType: Data] = [:]
+            for type in item.types {
+                if let data = item.data(forType: type) { entries[type] = data }
+            }
+            return entries
+        }
+
+        let clearedCount = pasteboard.clearContents()
+        guard pasteboard.setString(text, forType: .string) else {
+            Self.restore(items, to: pasteboard, ifChangeCountIs: clearedCount)
+            return nil
+        }
+        // De-facto clipboard-manager convention: this short-lived entry does
+        // not belong in history because the prior clipboard is restored.
+        pasteboard.setString("", forType: .transient)
+        expectedChangeCount = pasteboard.changeCount
     }
 
-    // MARK: Clipboard snapshot
+    /// Restores the snapshot unless something else wrote after Murmur.
+    func restore(to pasteboard: NSPasteboard) {
+        Self.restore(items, to: pasteboard, ifChangeCountIs: expectedChangeCount)
+    }
 
-    /// A deep copy of every item/type on the pasteboard so it can be restored.
-    private struct Snapshot {
-        private let items: [[NSPasteboard.PasteboardType: Data]]
-
-        init(_ pasteboard: NSPasteboard) {
-            items = (pasteboard.pasteboardItems ?? []).map { item in
-                var entries: [NSPasteboard.PasteboardType: Data] = [:]
-                for type in item.types {
-                    if let data = item.data(forType: type) {
-                        entries[type] = data
-                    }
-                }
-                return entries
-            }
+    private static func restore(
+        _ items: [[NSPasteboard.PasteboardType: Data]],
+        to pasteboard: NSPasteboard,
+        ifChangeCountIs expected: Int
+    ) {
+        guard pasteboard.changeCount == expected else { return }
+        pasteboard.clearContents()
+        let restored = items.compactMap { entries -> NSPasteboardItem? in
+            guard !entries.isEmpty else { return nil }
+            let item = NSPasteboardItem()
+            for (type, data) in entries { item.setData(data, forType: type) }
+            return item
         }
-
-        /// Restores the snapshot unless something else wrote to the pasteboard
-        /// after our paste — in that case the user's newer copy wins.
-        func restore(to pasteboard: NSPasteboard, ifChangeCountIs expected: Int) {
-            guard pasteboard.changeCount == expected else { return }
-            pasteboard.clearContents()
-            let restored = items.compactMap { entries -> NSPasteboardItem? in
-                guard !entries.isEmpty else { return nil }
-                let item = NSPasteboardItem()
-                for (type, data) in entries {
-                    item.setData(data, forType: type)
-                }
-                return item
-            }
-            if !restored.isEmpty {
-                pasteboard.writeObjects(restored)
-            }
-        }
+        if !restored.isEmpty { pasteboard.writeObjects(restored) }
     }
 }
 

@@ -72,30 +72,56 @@ enum WhisperModel: String, CaseIterable, Codable, Identifiable {
     }
 }
 
-/// Languages exposed in the UI. `whisperCode` is the ISO 639-1 code Whisper
-/// uses; `nil` means auto-detect.
-enum TranscriptionLanguage: String, CaseIterable, Codable, Identifiable {
-    case auto
-    case english = "en"
-    case russian = "ru"
-    case ukrainian = "uk"
-    case german = "de"
-    case french = "fr"
-    case spanish = "es"
+/// Whisper's complete language catalog. This remains a small value type so
+/// settings keep their original single-string JSON representation ("en",
+/// "ru", and so on) while the picker can expose every supported language.
+struct TranscriptionLanguage: CaseIterable, Codable, Hashable, Identifiable {
+    let rawValue: String
+
+    static let auto = Self("auto")
+    static let english = Self("en")
+    static let russian = Self("ru")
+    static let ukrainian = Self("uk")
+    static let german = Self("de")
+    static let french = Self("fr")
+    static let spanish = Self("es")
+    static let polish = Self("pl")
+    static let japanese = Self("ja")
+    static let arabic = Self("ar")
+
+    /// Codes published by Whisper, in its canonical order.
+    private static let whisperCodes = [
+        "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr", "pl", "ca", "nl", "ar", "sv", "it",
+        "id", "hi", "fi", "vi", "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no", "th", "ur",
+        "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk", "te", "fa", "lv", "bn", "sr", "az", "sl", "kn",
+        "et", "mk", "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw", "gl", "mr", "pa", "si",
+        "km", "sn", "yo", "so", "af", "oc", "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo",
+        "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl", "mg", "as", "tt", "haw", "ln", "ha",
+        "ba", "jw", "su",
+    ]
+
+    static let allCases = [auto] + whisperCodes.map(Self.init)
+
+    private init(_ rawValue: String) { self.rawValue = rawValue }
 
     var id: String { rawValue }
-
     var whisperCode: String? { self == .auto ? nil : rawValue }
 
     var displayName: String {
-        switch self {
-        case .auto: return "Auto-detect"
-        case .english: return "English"
-        case .russian: return "Russian"
-        case .ukrainian: return "Ukrainian"
-        case .german: return "German"
-        case .french: return "French"
-        case .spanish: return "Spanish"
+        guard self != .auto else { return "Auto-detect" }
+        return Locale(identifier: "en").localizedString(forLanguageCode: rawValue)?.capitalized ?? rawValue.uppercased()
+    }
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        guard value == Self.auto.rawValue || Self.whisperCodes.contains(value) else {
+            throw DecodingError.dataCorrupted(.init(codingPath: decoder.codingPath, debugDescription: "Unsupported Whisper language code \(value)"))
         }
+        rawValue = value
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
     }
 }

@@ -12,6 +12,9 @@ struct DictationOutcome: Equatable {
     var transcriptionSeconds: TimeInterval
     var method: InsertionMethod
     var model: WhisperModel
+    /// What the model decoded, when auto-detecting.
+    var detectedLanguage: String?
+    var delivery: DeliveryStatus = .verified
 
     static func wordCount(of text: String) -> Int {
         text.split(whereSeparator: \.isWhitespace).count
@@ -24,6 +27,7 @@ struct DailyStats: Codable, Equatable {
     /// "yyyy-MM-dd" in the user's calendar at write time.
     var day: String
     var dictations = 0
+    var unverifiedInsertions = 0
     var words = 0
     var characters = 0
     var recordedSeconds: Double = 0
@@ -43,6 +47,7 @@ struct DailyStats: Codable, Equatable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         day = try c.decode(String.self, forKey: .day)
         dictations = try c.decodeIfPresent(Int.self, forKey: .dictations) ?? 0
+        unverifiedInsertions = try c.decodeIfPresent(Int.self, forKey: .unverifiedInsertions) ?? 0
         words = try c.decodeIfPresent(Int.self, forKey: .words) ?? 0
         characters = try c.decodeIfPresent(Int.self, forKey: .characters) ?? 0
         recordedSeconds = try c.decodeIfPresent(Double.self, forKey: .recordedSeconds) ?? 0
@@ -56,6 +61,7 @@ struct DailyStats: Codable, Equatable {
 
     mutating func fold(_ outcome: DictationOutcome, hour: Int, weekdayIndex: Int) {
         dictations += 1
+        if outcome.delivery == .unverified { unverifiedInsertions += 1 }
         words += outcome.words
         characters += outcome.characters
         recordedSeconds += outcome.recordedSeconds

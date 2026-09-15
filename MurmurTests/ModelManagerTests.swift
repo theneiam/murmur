@@ -57,6 +57,22 @@ final class ModelManagerTests: XCTestCase {
         try Data("{}".utf8).write(to: folder.appendingPathComponent("config.json"))
     }
 
+    func testActiveDictationDefersModelSwitchAndPreventsDeletionAndUnload() async {
+        manager.activate(.small)
+        _ = await manager.awaitActivation()
+        XCTAssertTrue(manager.beginUse(of: .small))
+        manager.activate(.medium)
+        await manager.delete(.small)
+        await manager.unloadForIdle()
+        _ = await manager.awaitActivation()
+        XCTAssertEqual(manager.activeModel, .small)
+        XCTAssertTrue(manager.isDownloaded(.small))
+        XCTAssertFalse(manager.beginUse(of: .medium))
+        manager.endUse()
+        _ = await manager.awaitActivation()
+        XCTAssertEqual(manager.activeModel, .medium)
+    }
+
     func testFreshManagerSeesBundlesAsDownloadedButNotReady() {
         for model in WhisperModel.allCases {
             XCTAssertEqual(manager.status(of: model), .downloaded)

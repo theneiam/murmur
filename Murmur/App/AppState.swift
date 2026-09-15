@@ -15,6 +15,7 @@ final class AppState: ObservableObject {
     typealias Phase = DictationSession.Phase
 
     @Published private(set) var hotkeyError: String?
+    @Published private(set) var isTestingMicrophone = false
 
     let settings: SettingsStore
     let permissions: PermissionsManager
@@ -28,14 +29,19 @@ final class AppState: ObservableObject {
     // Forwarded from the session so views observing only AppState keep working.
     var phase: Phase { session.phase }
     var lastTranscript: String? { session.lastTranscript }
+    var lastRawTranscript: String? { session.lastRawTranscript }
+    var lastDeliveryStatus: DeliveryStatus? { session.lastDeliveryStatus }
+    var lastTiming: DictationTiming? { session.lastTiming }
     var lastError: String? { session.lastError }
     var lastInsertionMethod: InsertionMethod? { session.lastInsertionMethod }
+    var lastDetectedLanguage: String? { session.lastDetectedLanguage }
 
     private let log = Logger.murmur("app")
     private var onboardingWindow: OnboardingWindowController?
     private var statisticsWindow: StatsWindowController?
     private var cancellables: Set<AnyCancellable> = []
     private var idleUnloadTask: Task<Void, Never>?
+    private var hasStarted = false
 
     private init() {
         settings = SettingsStore()
@@ -43,6 +49,7 @@ final class AppState: ObservableObject {
         models = ModelManager()
         hotkeys = HotkeyManager(hotkey: settings.hotkey)
         recorder = AudioRecorder()
+        recorder.preferredInputDeviceUIDs = settings.preferredInputDeviceUIDs
         statusPanel = StatusPanel()
         stats = StatsStore()
         stats.isEnabled = settings.collectStatistics
@@ -64,10 +71,36 @@ final class AppState: ObservableObject {
                     playSounds: settings.playSounds,
                     microphoneAuthorized: permissions.microphone == .authorized
                 )
+            },
+            destinationConfig: { bundleIdentifier in
+                let resolved = settings.resolvedAppSettings(for: bundleIdentifier)
+                return DictationConfig(
+                    model: settings.model,
+                    language: resolved.language,
+                    postProcessing: resolved.postProcessing,
+                    insertionStrategy: resolved.insertionStrategy,
+                    inputDeviceUID: settings.inputDeviceUID,
+                    maxRecordingSeconds: settings.maxRecordingSeconds,
+                    playSounds: settings.playSounds,
+                    microphoneAuthorized: permissions.microphone == .authorized,
+                    newlinePreference: resolved.newlinePreference
+                )
             }
         )
 
-        hotkeys.onPress = { [weak self] in self?.session.press() }
+        hotkeys.pasteLastHotkey = settings.pasteLastHotkey
+        hotkeys.copyLastHotkey = settings.copyLastHotkey
+        hotkeys.verbatimHotkey = settings.verbatimHotkey
+        hotkeys.onPress = { [weak self] in
+            guard let self, !isTestingMicrophone else { return }
+            session.press()
+        }
+        hotkeys.onVerbatimPress = { [weak self] in
+            guard let self, !isTestingMicrophone else { return }
+            session.press(verbatim: true)
+        }
+        hotkeys.onPasteLast = { [weak self] in self?.session.pasteLastTranscript() }
+        hotkeys.onCopyLast = { [weak self] in self?.copyLastTranscript() }
         hotkeys.onRelease = { [weak self] in self?.session.release() }
         hotkeys.onCancel = { [weak self] in self?.session.cancel() }
 
@@ -92,9 +125,28 @@ final class AppState: ObservableObject {
             }
             .store(in: &cancellables)
 
+        Publishers.CombineLatest(session.$phase, session.$hasPendingWork)
+            .sink { [weak self] phase, pending in
+                self?.hotkeys.cancellationEnabled = phase == .transcribing || phase == .inserting || pending
+            }
+            .store(in: &cancellables)
+
         settings.$hotkey
             .removeDuplicates()
             .sink { [weak self] hotkey in self?.hotkeys.hotkey = hotkey }
+            .store(in: &cancellables)
+
+        settings.$pasteLastHotkey
+            .sink { [weak self] in self?.hotkeys.pasteLastHotkey = $0 }
+            .store(in: &cancellables)
+        settings.$copyLastHotkey
+            .sink { [weak self] in self?.hotkeys.copyLastHotkey = $0 }
+            .store(in: &cancellables)
+        settings.$verbatimHotkey
+            .sink { [weak self] in self?.hotkeys.verbatimHotkey = $0 }
+            .store(in: &cancellables)
+        settings.$preferredInputDeviceUIDs
+            .sink { [weak self] in self?.recorder.preferredInputDeviceUIDs = $0 }
             .store(in: &cancellables)
 
         // `dropFirst` so launching never triggers a download by itself; the
@@ -142,6 +194,7 @@ final class AppState: ObservableObject {
             settings.$showStatusPanel.map { _ in () }.eraseToAnyPublisher(),
             settings.$statusPanelAnchor.map { _ in () }.eraseToAnyPublisher(),
             $hotkeyError.map { _ in () }.eraseToAnyPublisher(),
+            $isTestingMicrophone.map { _ in () }.eraseToAnyPublisher(),
             session.$phase.map { _ in () }.eraseToAnyPublisher()
         )
         .receive(on: DispatchQueue.main)
@@ -154,6 +207,7 @@ final class AppState: ObservableObject {
             .removeDuplicates()
             .sink { [weak self] trusted in
                 guard let self else { return }
+                guard hasStarted else { return }
                 if trusted { startHotkeyListener() } else { hotkeys.stop() }
             }
             .store(in: &cancellables)
@@ -162,6 +216,8 @@ final class AppState: ObservableObject {
     // MARK: Startup
 
     func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
         permissions.refresh()
         startHotkeyListener()
         if models.isDownloaded(settings.model) {
@@ -213,6 +269,27 @@ final class AppState: ObservableObject {
         statisticsWindow?.show()
     }
 
+    func copyLastTranscript() {
+        guard let text = lastTranscript, !text.isEmpty else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        statusPanel.showMessage("Last transcript copied.", for: MessageDuration.glance)
+    }
+
+    /// Microphone testing owns a separate recorder. Suspend the global key
+    /// listener so a test and a dictation can never compete for the input.
+    func setMicrophoneTesting(_ testing: Bool) {
+        guard testing != isTestingMicrophone else { return }
+        isTestingMicrophone = testing
+        if testing {
+            session.cancel()
+            hotkeys.stop()
+        } else if permissions.accessibility {
+            startHotkeyListener()
+        }
+    }
+
     /// Current statistics, for the menu and the Statistics window.
     var statsSummary: StatsSummary {
         StatsSummary.make(days: stats.days, calendar: .current, now: Date())
@@ -251,6 +328,7 @@ final class AppState: ObservableObject {
 
     /// One-line status for the menu bar.
     var statusText: String {
+        if isTestingMicrophone { return "Testing microphone…" }
         if !permissions.accessibility { return "Accessibility permission needed" }
         if permissions.microphone != .authorized { return "Microphone permission needed" }
         if let hotkeyError { return hotkeyError }
@@ -271,6 +349,7 @@ final class AppState: ObservableObject {
     }
 
     private func startHotkeyListener() {
+        guard !isTestingMicrophone else { return }
         guard !hotkeys.isRunning else { return }
         do {
             try hotkeys.start()

@@ -6,6 +6,7 @@ import Foundation
 
 // MARK: Audio
 
+@MainActor
 protocol AudioCapturing: AnyObject {
     /// Called on the main thread with a level in 0…1.
     var onLevel: ((Float) -> Void)? { get set }
@@ -39,6 +40,13 @@ protocol ModelProviding: AnyObject {
     func activate(_ model: WhisperModel)
     /// Waits for in-flight activation and reports whether `model` is warm.
     func awaitActivation(of model: WhisperModel) async -> Bool
+    func beginUse(of model: WhisperModel) -> Bool
+    func endUse()
+}
+
+extension ModelProviding {
+    func beginUse(of model: WhisperModel) -> Bool { true }
+    func endUse() {}
 }
 
 extension ModelManager: ModelProviding {}
@@ -47,7 +55,15 @@ extension ModelManager: ModelProviding {}
 
 @MainActor
 protocol TextInserting: AnyObject {
-    func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionMethod
+    func captureDestination() -> InsertionDestination?
+    func insert(_ text: String, strategy: InsertionStrategy, destination: InsertionDestination?) async throws -> InsertionResult
+}
+
+extension TextInserting {
+    func captureDestination() -> InsertionDestination? { nil }
+    func insert(_ text: String, strategy: InsertionStrategy) async throws -> InsertionResult {
+        try await insert(text, strategy: strategy, destination: captureDestination())
+    }
 }
 
 // MARK: Presentation
@@ -78,6 +94,7 @@ struct DictationConfig: Equatable {
     var maxRecordingSeconds: TimeInterval
     var playSounds: Bool
     var microphoneAuthorized: Bool
+    var newlinePreference: NewlinePreference = .automatic
 }
 
 /// One-off outcomes the app may want to react to (log, hint, metrics-free
