@@ -21,6 +21,7 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ### Changed
 - The floating status panel uses the preferred “MurMur” capitalization.
+- The app bundle now includes Murmur's license and complete third-party notices for offline access.
 
 ### Fixed
 - Utterances between 0.3 and 1.0 seconds produced no text at all. WhisperKit's decoder never runs on audio that short, so quick confirmations ("да", "ok", "ship it") were silently reported as "Didn't catch that"; the audio is now padded with silence past that floor.

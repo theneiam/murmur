@@ -34,9 +34,11 @@ SOFTWARE.
 Portions of Argmax OSS (`Sources/ArgmaxCore/External`) are derived from
 swift-transformers (<https://github.com/huggingface/swift-transformers>),
 Copyright 2022 Hugging Face SAS, licensed under the Apache License,
-Version 2.0 (<http://www.apache.org/licenses/LICENSE-2.0>). The full license
-text and Argmax's modification notice are in the `NOTICES` file of the
-Argmax OSS repository.
+Version 2.0 (<https://www.apache.org/licenses/LICENSE-2.0>). The full license
+text and Argmax's modification notice are included in
+[`Legal/ArgmaxOSS-NOTICES.txt`](Legal/ArgmaxOSS-NOTICES.txt), copied verbatim
+from the exact Argmax OSS version used by Murmur. Both notice files and
+Murmur's license are bundled with the application.
 
 ## OpenAI Whisper models
 
