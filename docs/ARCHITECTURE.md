@@ -4,28 +4,119 @@ A ten-minute map for contributors. The operational cheat sheet with macOS
 gotchas is [CLAUDE.md](../CLAUDE.md); this page describes responsibilities,
 interfaces, concurrency, and storage.
 
+## Components and who calls whom
+
+```mermaid
+flowchart LR
+    subgraph sysIn["macOS"]
+        direction TB
+        KB["Keyboard<br/>CGEvent tap"]
+        MIC["Microphone<br/>selected input"]
+        HF["Hugging Face<br/>first setup only"]
+    end
+    subgraph adaptIn["Input adapters"]
+        direction TB
+        HK["HotkeyManager<br/>TapState, own thread"]
+        AR["AudioRecorder<br/>render thread, restarts"]
+        MM["ModelManager<br/>download, lease, unload"]
+        WK["WhisperKitEngine<br/>actor, CoreML/ANE"]
+    end
+    subgraph core["Core"]
+        direction TB
+        AS["AppState<br/>composition root, app policy"]
+        DS["DictationSession<br/>push-to-talk pipeline"]
+        SET["SettingsStore<br/>global settings + per-app profiles"]
+    end
+    subgraph adaptOut["Output adapters"]
+        direction TB
+        SI["StrategyInserter<br/>AX first, paste fallback"]
+        SP["StatusPanel<br/>never takes focus"]
+        SS["StatsStore<br/>text-free daily totals"]
+    end
+    subgraph sysOut["macOS"]
+        direction TB
+        APP["Frontmost app<br/>focused text field"]
+        SCR["Screen<br/>floating indicator"]
+        DISK["UserDefaults + Application Support"]
+    end
+
+    KB -->|"key events"| HK -->|"callbacks on main"| AS
+    AS -->|"press / release / cancel"| DS
+    AS -->|"onEvent"| SS --> DISK
+    MIC -->|"PCM buffers"| AR
+    HF -->|"model + tokenizer"| MM
+    DS -->|"AudioCapturing"| AR
+    DS -->|"ModelProviding"| MM -->|"owns, loads"| WK
+    DS -->|"TranscriptionEngine"| WK
+    DS -->|"TextInserting"| SI -->|"AX write or tagged ⌘V"| APP
+    DS -->|"DictationPresenting"| SP -->|"draws"| SCR
+    SET -->|"snapshot at key-down"| DS
+    SET --> DISK
+
+    classDef main stroke:#4257E8,stroke-width:2px,fill:transparent;
+    classDef tap stroke:#B0640A,stroke-width:2px,fill:transparent;
+    classDef render stroke:#0A7C6F,stroke-width:2px,fill:transparent;
+    classDef engine stroke:#B23577,stroke-width:2px,fill:transparent;
+    classDef sys stroke:#7C7F9C,stroke-width:1.5px,stroke-dasharray:4 3,fill:transparent;
+    class AS,DS,SET,MM,SI,SP,SS main
+    class HK tap
+    class AR render
+    class WK engine
+    class KB,MIC,HF,APP,SCR,DISK sys
+    classDef group fill:transparent,stroke:#B9BCCC,stroke-width:1px;
+    class sysIn,adaptIn,core,adaptOut,sysOut group
+```
+
+Arrows point from caller to callee, and the border colour is the execution
+context:
+
+- blue — `@MainActor`: all orchestration and every seam call
+- amber — the CGEvent tap's own thread, which must return in microseconds
+- teal — the audio render thread, which appends buffers under a lock
+- pink — a Swift actor, which serializes model loads and inference
+- dashed grey — macOS or the network, outside the app
+
+The labels between the core and its neighbours are the protocol seams in
+`Dictation/DictationSeams.swift` and `Insertion/TextInserter.swift`; the table
+under [Seams](#seams) lists the fake each one is swapped for in tests.
+`AppState` constructs every component, so ownership edges are left out.
+
 ## The dictation flow
 
-```text
-hotkey down ──▶ DictationSession.press()
-                  ├─ capture intended app, field, and selection
-                  ├─ snapshot global or matching app-profile settings
-                  ├─ acquire the selected model's use lease
-                  ├─ warm a cold model while the user speaks
-                  └─ AudioCapturing.start()       AVAudioEngine → 16 kHz mono
+```mermaid
+sequenceDiagram
+    participant K as HotkeyManager
+    participant S as DictationSession
+    participant A as AudioRecorder
+    participant M as ModelManager + WhisperKitEngine
+    participant I as StrategyInserter
 
-hotkey up   ──▶ DictationSession.release()
-                  ├─ AudioCapturing.stop() → Recording
-                  ├─ await model readiness
-                  ├─ TranscriptionEngine.transcribe()  WhisperKit, 90 s timeout
-                  ├─ retain raw text in memory
-                  ├─ TextPostProcessor.process()        deterministic text rules
-                  ├─ LayoutPolicy.adapt()                destination-safe newlines
-                  ├─ revalidate app/field/selection
-                  └─ TextInserting.insert()              AX or guarded ⌘V paste
-                         ├─ verified/unverified delivery result
-                         └─ release-to-delivery stage timing
+    K->>S: onPress, on the main queue
+    S->>S: snapshot global or matching app-profile settings
+    S->>I: captureDestination: app, field, selection
+    S->>M: beginUse: acquire the model lease
+    par while the user speaks
+        S->>A: start: AVAudioEngine to 16 kHz mono
+        A-->>S: levels for the status panel
+    and if the model is cold
+        S->>M: activate: load now, not after release
+    end
+    K->>S: onRelease
+    S->>A: stop
+    A-->>S: Recording
+    S->>M: transcribe: padded past 1.0 s, 90 s timeout
+    M-->>S: Transcript, raw text retained in memory
+    S->>S: TextPostProcessor.process, LayoutPolicy.adapt
+    S->>I: insert with the captured destination
+    I->>I: revalidate app, field, selection
+    I-->>S: InsertionResult: AX verified, or paste unverified
+    Note over K,I: Escape cancels at any point. Stage timings are kept for the menu.
 ```
+
+Two orderings carry the design. The destination and configuration are captured
+at key-down and checked again before delivery, so a settings change or a focus
+change mid-dictation cannot alter or misdirect the result. A cold model starts
+loading while the user is still speaking rather than after the key comes up.
 
 Escape cancels recording or the active user flow. A cancelled or timed-out
 CoreML call may finish internally, but its result is invalidated, the engine
