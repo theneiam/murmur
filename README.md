@@ -172,7 +172,9 @@ Do not set the team only in Xcode's Signing tab: XcodeGen overwrites it.
 The first build resolves the pinned WhisperKit package; no speech model is
 needed for automated tests.
 
-Read [CONTRIBUTING.md](CONTRIBUTING.md) for development, [AGENTS.md](AGENTS.md)
-for the documentation map, and [docs/RELEASING.md](docs/RELEASING.md) for
+Read [CONTRIBUTING.md](CONTRIBUTING.md) for development,
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for diagrams of the components,
+the dictation flow, threading and storage, [AGENTS.md](AGENTS.md) for the
+documentation map, and [docs/RELEASING.md](docs/RELEASING.md) for
 signing/notarization and release gates. [LICENSE](LICENSE) is MIT;
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) lists component/model notices.
