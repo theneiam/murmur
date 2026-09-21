@@ -31,7 +31,7 @@ jobs:
         run: xcodegen generate
 
       - name: Cache Swift packages
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build/DerivedData/SourcePackages
           key: spm-${{ runner.os }}-${{ hashFiles('Murmur.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved', 'project.yml') }}
