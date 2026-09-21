@@ -17,6 +17,25 @@ jobs:
       - name: swiftformat --lint
         run: swiftformat --lint .
 
+  shell:
+    name: Shell tests
+    runs-on: macos-15
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      # The release gates check the versions of these, so they have to exist.
+      - name: Install XcodeGen and SwiftFormat
+        run: brew install xcodegen swiftformat
+
+      - name: Run shell tests
+        run: scripts/tests/run.sh
+
+      # Proves the gates pass on the committed source, not only on fixtures:
+      # exact package pins, and project.yml agreeing with the changelog.
+      - name: Release gate preflight
+        run: scripts/release-gates.sh preflight
+
   test:
     name: Build & test
     runs-on: macos-15

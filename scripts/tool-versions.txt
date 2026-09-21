@@ -1,0 +1,18 @@
+# Minimum versions of the tools a release is built with (MUR-018).
+#
+# These are floors, not exact pins: Homebrew and the GitHub runners install
+# whatever is current, and refusing a newer toolchain would block every
+# release. What the floor buys is a named, checked input instead of "whatever
+# was on the machine that day" — scripts/release-gates.sh fails the release
+# when a tool is missing or older than the version the project is known to
+# build with, and docs/RELEASING.md records the versions actually used.
+#
+# The exact dependency pin that does have to be exact is the Swift package in
+# project.yml (Package.resolved lives inside the git-ignored .xcodeproj);
+# require_exact_package_pins enforces that separately.
+#
+# tool        minimum
+xcodegen      2.38.0
+xcodebuild    16.0
+swiftformat   0.52.0
+git           2.30.0

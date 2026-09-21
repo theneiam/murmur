@@ -11,12 +11,13 @@ xcodegen generate          # after editing project.yml; regenerates Murmur.xcode
 xcodebuild -project Murmur.xcodeproj -scheme Murmur -configuration Debug -derivedDataPath build/DerivedData build 2>&1 | tail -40
 xcodebuild test -project Murmur.xcodeproj -scheme Murmur -destination 'platform=macOS' -derivedDataPath build/DerivedData
 swiftformat .              # CI runs `swiftformat --lint .`; both must pass before pushing
+scripts/tests/run.sh       # shell tests for the release gates (no build, no signing)
 log stream --predicate 'subsystem == "com.yevhen.murmur"' --level debug
 ```
 
 Signing for local builds comes from the git-ignored `Config/Local.xcconfig` (copy `Config/Local.xcconfig.example`, add `DEVELOPMENT_TEAM`). Without it the build is ad-hoc signed and still runs, but macOS re-asks for permissions after every rebuild.
 
-Release: `TEAM_ID=… NOTARY_PROFILE=… scripts/release.sh` → `build/release/Murmur-<version>.dmg`, notarized and stapled. Full runbook and publication gates in [docs/RELEASING.md](docs/RELEASING.md).
+Release: `TEAM_ID=… NOTARY_PROFILE=… scripts/release.sh` → `build/release/Murmur-<version>.dmg`, notarized and stapled, with `SOURCE_COMMIT.txt` and `SHA256SUMS` beside it. The script refuses to build from a dirty tree, an unpinned dependency or a version `project.yml` and `CHANGELOG.md` disagree on (`scripts/release-gates.sh preflight` checks the same without building; `MURMUR_TEST_BUILD=1` downgrades them to warnings and stamps the artifact unpublishable). Full runbook and publication gates in [docs/RELEASING.md](docs/RELEASING.md).
 
 **Quit any running Murmur before launching a new build** — two instances would both install event taps. The test host is exempt: `AppDelegate` skips all start-up work under XCTest.
 
