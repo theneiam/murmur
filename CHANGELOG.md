@@ -5,6 +5,9 @@ versions follow [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The release script enforces the gates the runbook only described: pinned tool versions, exactly pinned package dependencies, a clean checkout, a version `project.yml` and this changelog agree on, an unchanged HEAD across the build, and the version the built bundle reports. It writes `SOURCE_COMMIT.txt` and `SHA256SUMS` beside the finished DMG, and `scripts/release-gates.sh verify` re-checks them before publication. Shell tests cover the gates and the fact that the script calls them; CI runs them. No user-visible change.
+
 ## [1.3.0] - 2026-09-14
 
 ### Added

@@ -34,7 +34,8 @@ Repository: <https://github.com/theneiam/murmur>. Website:
 - **Test first for testable behavior.** Write a failing regression test,
   observe the failure, then implement. Keep logic pure or behind seams.
 - **Leave the tree green.** App changes require `xcodebuild test` and
-  `swiftformat --lint .` to pass. Run the manual checks for affected adapters.
+  `swiftformat --lint .` to pass; changes under `scripts/` also require
+  `scripts/tests/run.sh`. Run the manual checks for affected adapters.
   For documentation-only work, verify paths, links and factual consistency.
 - **The owner commits and pushes.** Do not commit unless asked. Propose one
   message per logical change, with the session's configured `Co-Authored-By`

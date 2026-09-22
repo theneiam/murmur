@@ -26,6 +26,7 @@ instances would both install a global event tap.
 
 ```bash
 xcodebuild test -project Murmur.xcodeproj -scheme Murmur -destination 'platform=macOS'
+scripts/tests/run.sh   # only needed when you touch scripts/
 ```
 
 Full automated and manual verification instructions are in

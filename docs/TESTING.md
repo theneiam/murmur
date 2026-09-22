@@ -14,14 +14,26 @@ From the repository root, with Xcode 16+ and XcodeGen installed:
 xcodegen generate
 xcodebuild test -project Murmur.xcodeproj -scheme Murmur -destination 'platform=macOS' -derivedDataPath build/DerivedData
 swiftformat --lint .
+scripts/tests/run.sh
 ```
+
+`scripts/tests/run.sh` covers the shell side: the release gates in
+`scripts/release-gates.sh` (clean tree, version agreement with the changelog,
+exact package pins, tool version floors, provenance and tag linkage), the fact
+that `scripts/release.sh` calls them, and a full run of that script against a
+stub toolchain — which is the only automated coverage the post-build
+provenance record has, since it otherwise runs only during a real release.
+Nothing is compiled, signed or notarized and no signing identity is needed, so
+it runs anywhere in seconds.
 
 When recognition or latency measurement changes, also compile the shared
 local scorer and run it on a small known JSONL fixture as described in
 [BENCHMARKS.md](BENCHMARKS.md). A result from that fixture checks the scorer;
 it is not a product benchmark.
 
-CI runs build/tests and format lint for pushes to `main` and pull requests.
+CI runs build/tests, format lint and the shell tests for pushes to `main`
+and pull requests; the shell job also runs `scripts/release-gates.sh
+preflight` against the committed source.
 It uses ad-hoc signing for the hosted test application. Test-first changes
 should record the targeted failure before implementation, then the passing
 targeted and complete checks. Derive counts from that run rather than a

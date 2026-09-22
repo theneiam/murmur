@@ -35,10 +35,22 @@ identity: it creates a signed but unnotarized test build.
 
 ## Source and verification gates
 
-These are required procedural gates. The current release script does not
-enforce every gate; executable enforcement is tracked as MUR-018 in
-[ROADMAP.md](ROADMAP.md). Never infer a gate passed merely because the script
-finished.
+These are required gates, and `scripts/release.sh` now enforces the mechanical
+ones before it builds anything: pinned tool versions from
+`scripts/tool-versions.txt`, exactly pinned Swift package dependencies, a clean
+checkout, a version `project.yml` and `CHANGELOG.md` agree on, an unchanged
+HEAD, and the version the built bundle actually reports. Each prints a ✔ or ✖
+line; read them rather than inferring a gate passed because the script
+finished. `scripts/release-gates.sh preflight` runs the same source checks on
+their own, and CI runs them on every push.
+
+The gates the script cannot judge stay yours: that the tests and manual checks
+really passed, and that the owner authorized the commit, push and publication.
+
+`MURMUR_TEST_BUILD=1` downgrades the source gates to warnings for a local
+experiment. The artifact is then stamped `state test-build` and
+`scripts/release-gates.sh verify` refuses it, so a build made with the gates
+bypassed cannot be published by accident.
 
 1. Decide the version: patch for bug fixes/internal changes; minor for a new
    compatible user-facing feature. Move *Unreleased* to a dated changelog
@@ -49,21 +61,25 @@ finished.
    failures before requesting the owner's commit/push approval.
 3. Commit the intended source only when authorized. The release must be built
    from a **clean checkout of that exact commit**, including no untracked
-   source files. `git status --porcelain` must print nothing. Ignored generated
-   project/build output is expected. Do not discard another contributor's
-   pending work to make this pass; use a separate clean checkout if necessary.
+   source files: the clean-tree gate fails on anything `git status --porcelain`
+   prints. Ignored generated project/build output is expected. Do not discard
+   another contributor's pending work to make this pass; use a separate clean
+   checkout if necessary.
 4. Record the source commit and intended version for the rest of the run:
 
    ```bash
    MURMUR_RELEASE_COMMIT=$(git rev-parse HEAD)
    MURMUR_RELEASE_VERSION=X.Y.Z
+   scripts/release-gates.sh preflight
    ```
 
-   Replace `X.Y.Z` with the approved version. Confirm it agrees with
-   `project.yml`. Do not edit source, switch branches or accept unrelated
-   changes while the artifact is being built.
-5. After the authorized push, require **Build & test** and **Format lint** to
-   be green for `MURMUR_RELEASE_COMMIT` before publication. Inspect the run's
+   Replace `X.Y.Z` with the approved version; preflight confirms it against
+   `project.yml` and the changelog. Do not edit source, switch branches or
+   accept unrelated changes while the artifact is being built — the script
+   re-checks the tree and HEAD after the build and refuses to record
+   provenance for a moved target.
+5. After the authorized push, require **Build & test**, **Format lint** and
+   **Shell tests** to be green for `MURMUR_RELEASE_COMMIT` before publication. Inspect the run's
    SHA, not merely the latest green badge. CI is configured for pushes to
    `main` and pull requests; a tag alone does not trigger those jobs. Owner
    branch-protection exemptions do not waive this publication gate.
@@ -84,21 +100,27 @@ usually dominates the elapsed time; do not publish an unfinished artifact.
 
 The DMG signature matters: notarizing an unsigned DMG is insufficient for
 Gatekeeper's disk-image assessment. Keep both app and DMG signing and
-notarization in the script. `VERSION` can override the marketing version for
-test builds; published builds must agree with the approved source version.
-The script stamps a timestamp build number unless `BUILD_NUMBER` is provided.
-It replaces `build/release/`, leaving the debug `build/DerivedData/` separate.
+notarization in the script. `VERSION` can override the marketing version, but
+only together with `MURMUR_TEST_BUILD=1`: a published build must agree with the
+approved source version. The script stamps a timestamp build number unless
+`BUILD_NUMBER` is provided. It replaces `build/release/`, leaving the debug
+`build/DerivedData/` separate.
 
-After the build, check the checkout is still clean and HEAD has not changed:
+Once the DMG is signed, notarized and stapled, the script re-runs the
+clean-tree gate, checks HEAD is still `MURMUR_RELEASE_COMMIT`, and writes the
+provenance record over the finished artifact:
+
+- `build/release/SOURCE_COMMIT.txt` — `commit`, `version`, `state`, `built`
+- `build/release/SHA256SUMS` — the DMG's checksum
+
+Confirm it independently before publishing:
 
 ```bash
-git status --porcelain
-test "$(git rev-parse HEAD)" = "$MURMUR_RELEASE_COMMIT"
-printf '%s\n' "$MURMUR_RELEASE_COMMIT" > build/release/SOURCE_COMMIT.txt
-shasum -a 256 "build/release/Murmur-$MURMUR_RELEASE_VERSION.dmg"
+scripts/release-gates.sh verify build/release "$MURMUR_RELEASE_COMMIT"
 ```
 
-Require empty status output and a successful SHA comparison. Record the DMG
+That re-reads the checksums from disk and refuses a `test-build` stamp, so it
+catches both a tampered or rebuilt artifact and a bypassed gate. Record the DMG
 checksum, source SHA, version/build and verification results in the release
 notes. `SOURCE_COMMIT.txt` is a build provenance record, not an embedded app
 attestation; the clean-tree and unchanged-HEAD checks establish its linkage.
@@ -113,12 +135,16 @@ release tag to hide a failed build. Prepare release notes as a file with
 real newlines, the source SHA and DMG checksum.
 
 ```bash
+scripts/release-gates.sh verify-tag . "v$MURMUR_RELEASE_VERSION" build/release
 gh release create "v$MURMUR_RELEASE_VERSION" \
   "build/release/Murmur-$MURMUR_RELEASE_VERSION.dmg" \
-  build/release/SOURCE_COMMIT.txt \
+  build/release/SOURCE_COMMIT.txt build/release/SHA256SUMS \
   --repo theneiam/murmur --verify-tag \
   --title "Murmur $MURMUR_RELEASE_VERSION" --notes-file /path/to/release-notes.md --latest
 ```
+
+`verify-tag` fails unless the annotated tag resolves to the exact commit
+recorded in `SOURCE_COMMIT.txt`.
 
 Publication requires the clean-source, artifact/signature and exact-commit
 CI gates above. A prior approval to implement or review a feature is not
@@ -129,8 +155,10 @@ approval to publish a release.
 - The release page has the intended version, notes and asset; `releases/latest`
   resolves to the new tag.
 - The tag's commit matches `SOURCE_COMMIT.txt` and the green CI run.
-- Download the DMG through `releases/latest/download/`, compare SHA-256 with
-  the local artifact, and check signing/Gatekeeper on that downloaded copy.
+- Download the DMG through `releases/latest/download/` together with the
+  published `SOURCE_COMMIT.txt` and `SHA256SUMS`, then run
+  `scripts/release-gates.sh verify <download-dir> "$MURMUR_RELEASE_COMMIT"` on
+  that copy and check signing/Gatekeeper on it.
 - Launch the release after quitting another Murmur. Verify permissions and a
   real dictation; signature-bound macOS grants can differ from a debug build.
 
