@@ -22,7 +22,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # The release gates check the versions of these, so they have to exist.
       - name: Install XcodeGen and SwiftFormat
