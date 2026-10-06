@@ -10,9 +10,9 @@ No account, cloud transcription or telemetry. MIT licensed.
 [Report a problem](https://github.com/theneiam/murmur/issues)
 
 Requires **macOS 14 or later and Apple Silicon**. Release DMGs are signed and
-notarized. See [CHANGELOG.md](CHANGELOG.md) for the contents of each release;
-features assigned to a version newer than the latest published release require
-a source build until that DMG is published.
+notarized. The current release is **1.3.0** (2026-09-14), and everything
+described below is in it. See [CHANGELOG.md](CHANGELOG.md) for the contents of
+each release.
 
 ## Install and get started
 
@@ -22,7 +22,7 @@ a source build until that DMG is published.
 2. Follow onboarding to grant **Microphone** and **Accessibility** access.
    Accessibility enables the global hotkey and insertion into other apps;
    Murmur does not record keystrokes.
-3. Choose a speech model and press **Download**. Wait for the model to load:
+3. Choose a speech model (Large v3 Turbo is preselected) and press **Download**. Wait for the model to load:
    the first load also fetches its tokenizer and compiles CoreML resources.
    This setup needs a network connection and can take several minutes.
 4. Choose a comfortable hotkey in Settings, open a text field in another app,
@@ -41,9 +41,10 @@ continue normally.
 
 - Push-to-talk recording: hold to speak, release to transcribe. No toggle or
   streaming mode. The recording cap defaults to two minutes and is configurable.
+  Escape cancels an active recording or a transcription in progress.
 - Local Whisper models through [WhisperKit](https://github.com/argmaxinc/argmax-oss-swift),
-  with all 99 Whisper language codes or auto-detection. Fix the language if
-  short phrases are detected incorrectly.
+  with auto-detection by default or any of the 99 Whisper languages fixed
+  explicitly, which helps when short phrases are misdetected.
 - Direct Accessibility insertion where supported, with a clipboard-restoring
   paste fallback. Murmur captures the intended app, field and selection at
   key-down and stops if focus changes before delivery. See the compatibility
@@ -51,11 +52,18 @@ continue normally.
 - In-memory recovery for the last raw and processed transcript: copy either,
   paste the processed text again, or clear both. Paste-last defaults to ⌃⌘V;
   copy-last and a separate verbatim push-to-talk shortcut are configurable.
+  The menu also shows recognition and release-to-delivery time for the last
+  dictation.
 - Searchable local corrections and phrase snippets with validated JSON
-  import/export, plus optional capitalization, filler removal, spoken layout
-  and punctuation commands, and trailing space between dictations.
-- Explicit per-app profiles for language, insertion, cleanup and newline
-  preferences. The profile is captured when dictation begins, so a setting
+  import/export, plus optional capitalization, filler removal and trailing
+  space between dictations (Settings → Text).
+- Spoken layout: “new line” or “new paragraph” (also “новая строка” /
+  “новый абзац”) said as its own short sentence inserts a line break; said
+  mid-sentence the words stay literal. On by default. Line breaks are flattened
+  to spaces in terminals, chat apps and single-line fields, where a newline
+  would run or send. Spoken punctuation commands are opt-in.
+- Explicit per-app profiles (Settings → Apps) for language, insertion, cleanup
+  and newline preferences. The profile is captured when dictation begins, so a setting
   change cannot alter an in-flight result.
 - Preferred microphone fallback ordering and a local level test in Settings →
   Audio. Audio restart decisions are bounded and ignore stale callbacks.
@@ -63,12 +71,14 @@ continue normally.
   recording indicator appears when needed even with this option off.
 - Local text-free statistics: words, dictations, speaking time, streaks and a
   typing-time estimate. Turn collection off or reset it in Settings → General.
-- A warm model while in use, with configurable idle unloading to free memory.
-  A cold reload starts while you speak.
+- A warm model while in use, unloaded after 30 idle minutes by default
+  (configurable, or never) to free memory. A cold reload starts while you speak.
 
-Pending features and their verification state are tracked in
-[the roadmap](docs/ROADMAP.md). Implementation status is separate from a
-published release and from real microphone/app compatibility testing.
+Next work is tracked in [the roadmap](docs/ROADMAP.md): broader app
+compatibility testing, a real built-in-versus-AirPods microphone and model
+comparison, a fresh-install walkthrough, and screenshots and translations.
+Some shipped features still await testing on real microphones and in more
+apps; the roadmap lists which checks remain open.
 
 ## Models and recognition quality
 
@@ -76,7 +86,7 @@ published release and from real microphone/app compatibility testing.
 |---|---|---|---|
 | Small | `openai_whisper-small` | 500 MB | Lower storage and compute requirements; compare accuracy on your language and names. |
 | Medium | `openai_whisper-medium` | 1.5 GB | A larger multilingual model; allow more time for first load. |
-| Large v3 Turbo | `openai_whisper-large-v3-v20240930_626MB` | 630 MB | Compressed large-v3-turbo checkpoint; compare speed and recognition on your Mac. |
+| Large v3 Turbo (default) | `openai_whisper-large-v3-v20240930_626MB` | 630 MB | Compressed large-v3-turbo checkpoint; compare speed and recognition on your Mac. |
 
 Models come from `argmaxinc/whisperkit-coreml` on Hugging Face and are stored
 under `~/Library/Application Support/Murmur/Models`. Download size is not a
